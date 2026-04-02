@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type MouseEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GlassCard } from "@/components/dashboard/glass-card";
 import {
@@ -47,10 +47,16 @@ const features = [
 ];
 
 export default function LandingPage() {
+  const [hasMounted, setHasMounted] = useState(false);
   const [walletInput, setWalletInput] = useState("");
   const [isHovered, setIsHovered] = useState(false);
-  const [mode, setMode] = useState<"demo" | "live">("demo");
+  const [mode, setMode] = useState<"demo" | "live">("live");
   const router = useRouter();
+  const resolvedMode = hasMounted ? mode : "live";
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   const handleAnalyze = () => {
     const trimmed = walletInput.trim();
@@ -63,6 +69,11 @@ export default function LandingPage() {
     if (mode === "demo") {
       router.push("/wallet/vitalik.eth?mode=demo");
     }
+  };
+
+  const handleOpenCopyTrading = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    router.push(`/copy-trading?mode=${mode}`);
   };
 
   return (
@@ -96,7 +107,7 @@ export default function LandingPage() {
                   地址雷达
                 </Button>
               </Link>
-              <Link href="/copy-trading">
+              <Link href="/copy-trading" onClick={handleOpenCopyTrading}>
                 <Button
                   variant="ghost"
                   className="gap-2 text-muted-foreground transition-all duration-300 hover:bg-neon-purple/10 hover:text-foreground"
@@ -111,17 +122,17 @@ export default function LandingPage() {
         </nav>
 
         {/* Hero Section */}
-        <main className="mx-auto max-w-4xl px-4 py-16 sm:px-6 sm:py-24">
+        <main className="mx-auto max-w-5xl px-4 py-14 sm:px-6 sm:py-18">
           <div className="text-center">
             <div className="flex flex-col items-center gap-4">
-              <h1 className="text-balance bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-4xl font-bold tracking-tight text-transparent sm:text-5xl lg:text-6xl">
+              <h1 className="text-balance bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-3xl font-bold tracking-tight text-transparent sm:text-4xl lg:text-5xl">
                 AI 驱动的链上分析
               </h1>
               <div className="inline-flex items-center gap-1 rounded-full border border-glass-border bg-glass/60 p-1 backdrop-blur-sm">
                 <button
                   onClick={() => setMode("live")}
                   className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                    mode === "live"
+                    resolvedMode === "live"
                       ? "bg-secondary text-foreground"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
@@ -131,7 +142,7 @@ export default function LandingPage() {
                 <button
                   onClick={() => setMode("demo")}
                   className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                    mode === "demo"
+                    resolvedMode === "demo"
                       ? "bg-secondary text-foreground"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
@@ -140,14 +151,14 @@ export default function LandingPage() {
                 </button>
               </div>
             </div>
-            <p className="mx-auto mt-4 max-w-2xl text-pretty text-lg text-muted-foreground sm:text-xl">
+            <p className="mx-auto mt-4 max-w-2xl text-pretty text-base text-muted-foreground sm:text-lg">
               追踪聪明钱流向，获取 AI 智能洞察，自动跟单顶级交易员
             </p>
           </div>
 
           {/* Main Input Section */}
           <GlassCard
-            className="mx-auto mt-12 max-w-2xl p-6 sm:p-8"
+            className="mx-auto mt-10 max-w-2xl p-6 sm:mt-12 sm:p-7"
             hover={false}
           >
             <div className="space-y-4">
@@ -156,13 +167,13 @@ export default function LandingPage() {
                 <Input
                   type="text"
                   placeholder={
-                    mode === "live"
+                    resolvedMode === "live"
                       ? "输入 Solana 钱包地址"
                       : "输入钱包地址或 ENS 域名"
                   }
                   value={walletInput}
                   onChange={(e) => setWalletInput(e.target.value)}
-                  className="h-14 rounded-xl border-glass-border bg-secondary/50 pl-12 pr-4 text-base text-foreground placeholder:text-muted-foreground focus:border-neon-purple/50 focus:ring-neon-purple/20"
+                  className="h-[52px] rounded-xl border-glass-border bg-secondary/50 pl-12 pr-4 text-base text-foreground placeholder:text-muted-foreground focus:border-neon-purple/50 focus:ring-neon-purple/20"
                   onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
                 />
               </div>
@@ -171,10 +182,10 @@ export default function LandingPage() {
                 onClick={handleAnalyze}
                 onMouseEnter={() => setIsHovered(true)}
                 onMouseLeave={() => setIsHovered(false)}
-                className="group relative h-12 w-full overflow-hidden rounded-xl bg-gradient-to-r from-neon-purple to-neon-blue text-base font-medium text-foreground transition-all duration-300 hover:shadow-[0_0_30px_rgba(139,92,246,0.4)]"
+                className="group relative h-11 w-full overflow-hidden rounded-xl bg-gradient-to-r from-neon-purple to-neon-blue text-base font-medium text-foreground transition-all duration-300 hover:shadow-[0_0_30px_rgba(139,92,246,0.4)]"
               >
                 <span className="relative z-10 flex items-center justify-center gap-2">
-                  {mode === "live" ? "分析聪明钱" : "查看 Demo 分析"}
+                  {resolvedMode === "live" ? "分析聪明钱" : "查看 Demo 分析"}
                   <ArrowRight
                     className={`h-4 w-4 transition-transform duration-300 ${isHovered ? "translate-x-1" : ""}`}
                   />
@@ -184,7 +195,7 @@ export default function LandingPage() {
             </div>
 
             {/* Example Wallets */}
-            <div className="mt-6">
+            <div className="mt-5">
               <p className="mb-3 text-center text-sm text-muted-foreground">
                 试试这些热门钱包
               </p>
@@ -206,13 +217,13 @@ export default function LandingPage() {
           </GlassCard>
 
           {/* Feature Cards */}
-          <div className="mt-16 grid gap-6 sm:mt-20 sm:grid-cols-3">
+          <div className="mt-14 grid gap-6 sm:mt-16 sm:grid-cols-3">
             {features.map((feature, index) => (
-              <GlassCard key={index} className="group p-6">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-neon-purple/20 to-neon-blue/20 transition-all duration-300 group-hover:from-neon-purple/30 group-hover:to-neon-blue/30">
-                  <feature.icon className="h-6 w-6 text-neon-purple transition-colors duration-300 group-hover:text-foreground" />
+              <GlassCard key={index} className="group p-5">
+                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-neon-purple/20 to-neon-blue/20 transition-all duration-300 group-hover:from-neon-purple/30 group-hover:to-neon-blue/30">
+                  <feature.icon className="h-5 w-5 text-neon-purple transition-colors duration-300 group-hover:text-foreground" />
                 </div>
-                <h3 className="mb-2 text-lg font-semibold text-foreground">
+                <h3 className="mb-2 text-base font-semibold text-foreground">
                   {feature.title}
                 </h3>
                 <p className="text-sm leading-relaxed text-muted-foreground">

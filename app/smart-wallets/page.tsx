@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlassCard } from "@/components/dashboard/glass-card";
+import { ConnectButton } from "@/components/wallet/wallet-connect";
 import {
   DEFAULT_CANDIDATE_ADDRESSES,
   parseCandidateAddresses,
@@ -119,10 +120,10 @@ export default function SmartWalletFinderPage() {
                     聪明地址雷达
                   </h1>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  批量筛选候选地址，优先找出持续交易 meme 的样本。
-                </p>
               </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <ConnectButton />
             </div>
           </div>
         </header>
@@ -158,8 +159,14 @@ export default function SmartWalletFinderPage() {
                 </Button>
               </div>
               <div className="mt-5 space-y-2 text-sm text-muted-foreground">
-                <p>建议先从 DexScreener 池子的 Top Traders 拿 5-10 个候选地址。</p>
-                <p>这个工具会优先看 recent trades、meme trade 数量、买卖比和轮动特征。</p>
+                <p>
+                  建议先从 DexScreener 池子的 Top Traders 拿 5-10 个候选地址 /
+                  从 GMGN 找到的活跃交易地址。
+                </p>
+                <p>
+                  这个工具会优先看 recent trades、meme trade
+                  数量、买卖比和轮动特征。
+                </p>
               </div>
             </GlassCard>
 
@@ -185,7 +192,7 @@ export default function SmartWalletFinderPage() {
                       Meme 轮动
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      识别是否反复交易 TRUMP、BONK、WIF、PENGU 等 meme。
+                      识别是否反复交易 TRUMP、BONK、WIF、PENGU 等 Meme。
                     </p>
                   </div>
                   <div className="rounded-2xl border border-glass-border bg-secondary/30 p-4">
@@ -208,7 +215,10 @@ export default function SmartWalletFinderPage() {
               ) : null}
 
               {isLoading ? (
-                <GlassCard className="flex min-h-[320px] items-center justify-center p-8" hover={false}>
+                <GlassCard
+                  className="flex min-h-[320px] items-center justify-center p-8"
+                  hover={false}
+                >
                   <div className="text-center">
                     <Loader2 className="mx-auto h-8 w-8 animate-spin text-neon-purple" />
                     <p className="mt-3 text-sm text-muted-foreground">
@@ -219,7 +229,11 @@ export default function SmartWalletFinderPage() {
               ) : (
                 <div className="space-y-4">
                   {results.map((result, index) => (
-                    <GlassCard key={result.address} className="p-5" hover={false}>
+                    <GlassCard
+                      key={result.address}
+                      className="p-5"
+                      hover={false}
+                    >
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
@@ -239,7 +253,9 @@ export default function SmartWalletFinderPage() {
                             {result.summary}
                           </p>
                           {result.error ? (
-                            <p className="mt-2 text-xs text-loss">{result.error}</p>
+                            <p className="mt-2 text-xs text-loss">
+                              {result.error}
+                            </p>
                           ) : null}
                           <div className="mt-3 flex flex-wrap gap-2">
                             {result.reasons.slice(0, 4).map((reason) => (
@@ -301,8 +317,12 @@ export default function SmartWalletFinderPage() {
                           </div>
                           <div className="rounded-2xl border border-glass-border bg-secondary/30 p-3 text-center">
                             <p className="truncate text-sm font-bold text-foreground">
-                              {result.analysis.metrics.recentTokens.slice(0, 3).join(", ") ||
-                                result.analysis.metrics.holdingTokens.slice(0, 3).join(", ") ||
+                              {result.analysis.metrics.recentTokens
+                                .slice(0, 3)
+                                .join(", ") ||
+                                result.analysis.metrics.holdingTokens
+                                  .slice(0, 3)
+                                  .join(", ") ||
                                 "--"}
                             </p>
                             <p className="text-xs text-muted-foreground">

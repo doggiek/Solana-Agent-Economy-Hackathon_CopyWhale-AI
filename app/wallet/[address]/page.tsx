@@ -22,6 +22,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Slider } from "@/components/ui/slider";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -128,6 +129,10 @@ export default function WalletAnalyticsPage({
 
   const [copied, setCopied] = useState(false);
   const [isAutoCopyEnabled, setIsAutoCopyEnabled] = useState(false);
+  const [copyPercentage, setCopyPercentage] = useState([50]);
+  const [riskLevel, setRiskLevel] = useState<"low" | "medium" | "high">(
+    "medium",
+  );
   const [analysis, setAnalysis] = useState<WalletAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -187,6 +192,11 @@ export default function WalletAnalyticsPage({
   };
 
   const tradeDegraded = analysis?.metrics?.recentTradeStatus === "degraded";
+  const riskColors = {
+    low: "border-profit/50 bg-profit/10 text-profit",
+    medium: "border-neon-purple/50 bg-neon-purple/10 text-neon-purple",
+    high: "border-loss/50 bg-loss/10 text-loss",
+  } as const;
 
   return (
     <div className="min-h-screen bg-background">
@@ -305,11 +315,11 @@ export default function WalletAnalyticsPage({
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-neon-purple/20 to-neon-blue/20">
                       <Brain className="h-4 w-4 text-neon-purple" />
                     </div>
-                    <h2 className="text-lg font-semibold text-foreground">
+                    <h2 className="text-base font-semibold text-foreground">
                       AI 洞察
                     </h2>
                   </div>
-                  <p className="leading-relaxed text-muted-foreground">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
                     {analysis.insight}
                   </p>
                 </GlassCard>
@@ -317,7 +327,7 @@ export default function WalletAnalyticsPage({
                 <GlassCard className="p-5">
                   <div className="mb-3 flex items-center gap-2">
                     <Radio className="h-4 w-4 text-neon-blue" />
-                    <h2 className="text-sm font-semibold text-foreground">
+                    <h2 className="text-base font-semibold text-foreground">
                       数据来源
                     </h2>
                   </div>
@@ -386,7 +396,7 @@ export default function WalletAnalyticsPage({
               <div className="grid gap-6 lg:grid-cols-2">
                 <GlassCard className="p-5">
                   <div className="mb-4 flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-foreground">
+                    <h2 className="text-base font-semibold text-foreground">
                       {analysis.listTitle}
                     </h2>
                     <span className="text-sm text-muted-foreground">
@@ -450,7 +460,7 @@ export default function WalletAnalyticsPage({
 
                 <div className="space-y-6">
                   <GlassCard className="p-5">
-                    <h3 className="mb-4 text-sm font-medium text-muted-foreground">
+                    <h3 className="mb-4 text-base font-semibold text-foreground">
                       {analysis.chartTitle}
                     </h3>
                     <div className="h-48">
@@ -525,10 +535,139 @@ export default function WalletAnalyticsPage({
                     </div>
                   </GlassCard>
 
+                  {analysis.followDecision ? (
+                    <GlassCard className="p-5">
+                      <div className="mb-4 flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-neon-blue" />
+                        <h3 className="text-base font-semibold text-foreground">
+                          跟单判断
+                        </h3>
+                        <FollowDecisionBadge
+                          verdict={analysis.followDecision.verdict}
+                        />
+                      </div>
+                      <p className="text-sm leading-relaxed text-muted-foreground">
+                        {analysis.followDecision.summary}
+                      </p>
+                      {analysis.metrics ? (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          当前交易覆盖率：{analysis.metrics.parsedTradeCoverageLabel}
+                          。这表示我们只在最近扫描的链上签名里，还原出了这部分明确的买卖。
+                        </p>
+                      ) : null}
+
+                      <div className="mt-5 space-y-5">
+                        <div>
+                          <p className="mb-3 text-sm font-medium text-foreground">风险等级</p>
+                          <div className="grid grid-cols-3 gap-3">
+                            {(["low", "medium", "high"] as const).map((level) => (
+                              <button
+                                key={level}
+                                type="button"
+                                onClick={() => setRiskLevel(level)}
+                                className={`rounded-xl border px-4 py-3 text-sm font-medium transition-all duration-200 ${
+                                  riskLevel === level
+                                    ? riskColors[level]
+                                    : "border-glass-border bg-secondary/30 text-muted-foreground hover:bg-secondary/50"
+                                }`}
+                              >
+                                {level === "low" && "保守"}
+                                {level === "medium" && "平衡"}
+                                {level === "high" && "激进"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="mb-3 flex items-center justify-between">
+                            <p className="text-sm font-medium text-foreground">跟单比例</p>
+                            <span className="rounded-lg bg-neon-purple/20 px-3 py-1 text-sm font-semibold text-neon-purple">
+                              {copyPercentage[0]}%
+                            </span>
+                          </div>
+                          <Slider
+                            value={copyPercentage}
+                            onValueChange={setCopyPercentage}
+                            min={10}
+                            max={100}
+                            step={5}
+                            className="py-2"
+                          />
+                          <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+                            <span>10%</span>
+                            <span>100%</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between rounded-xl border border-glass-border bg-secondary/30 px-4 py-3">
+                            <p className="text-sm font-medium text-foreground">单币仓位上限</p>
+                            <p className="text-sm text-muted-foreground">
+                              ${riskLevel === "low" ? 30 : riskLevel === "medium" ? 75 : 150}
+                            </p>
+                          </div>
+                          <div className="flex items-center justify-between rounded-xl border border-glass-border bg-secondary/30 px-4 py-3">
+                            <p className="text-sm font-medium text-foreground">模拟止损</p>
+                            <p className="text-sm text-muted-foreground">
+                              -{riskLevel === "low" ? 4 : riskLevel === "medium" ? 6 : 10}%
+                            </p>
+                          </div>
+                          <div className="flex items-center justify-between rounded-xl border border-glass-border bg-secondary/30 px-4 py-3">
+                            <p className="text-sm font-medium text-foreground">模拟止盈</p>
+                            <p className="text-sm text-muted-foreground">
+                              +{riskLevel === "low" ? 8 : riskLevel === "medium" ? 12 : 18}%
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-3">
+                          <Button
+                            onClick={() => {
+                              setIsAutoCopyEnabled(true);
+                              const target = `/copy-trading?mode=${analysis.mode}&source=${encodeURIComponent(
+                                analysis.address,
+                              )}&autostart=1&ratio=${copyPercentage[0]}&risk=${riskLevel}`;
+                              window.open(target, "_blank", "noopener,noreferrer");
+                            }}
+                            className={`group relative h-12 overflow-hidden rounded-2xl text-sm font-semibold transition-all duration-300 ${
+                              analysis.followDecision.verdict === "follow"
+                                ? "bg-gradient-to-r from-neon-purple to-neon-blue text-foreground hover:shadow-[0_0_30px_rgba(139,92,246,0.4)]"
+                                : "bg-secondary text-muted-foreground"
+                            }`}
+                          >
+                            <span className="relative z-10 flex items-center justify-center gap-2">
+                              <Zap
+                                className={`h-5 w-5 ${isAutoCopyEnabled ? "animate-pulse" : ""}`}
+                              />
+                              {isAutoCopyEnabled ? "跳转到交易面板" : "加入自动跟单池"}
+                            </span>
+                            {analysis.followDecision.verdict === "follow" ? (
+                              <div className="absolute inset-0 bg-gradient-to-r from-neon-blue to-neon-purple opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                            ) : null}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-11 rounded-2xl border-glass-border bg-transparent text-muted-foreground hover:border-neon-purple/50 hover:bg-neon-purple/10 hover:text-foreground"
+                            onClick={() => {
+                              const target = `/copy-trading?mode=${analysis.mode}&source=${encodeURIComponent(
+                                analysis.address,
+                              )}&ratio=${copyPercentage[0]}&risk=${riskLevel}`;
+                              window.open(target, "_blank", "noopener,noreferrer");
+                            }}
+                          >
+                            查看交易面板
+                          </Button>
+                        </div>
+                      </div>
+                    </GlassCard>
+                  ) : null}
+
                   <GlassCard className="p-5">
                     <div className="mb-3 flex items-center gap-2">
                       <ChartLine className="h-4 w-4 text-neon-blue" />
-                      <h3 className="text-sm font-medium text-foreground">
+                      <h3 className="text-base font-semibold text-foreground">
                         模式说明
                       </h3>
                     </div>
@@ -544,61 +683,6 @@ export default function WalletAnalyticsPage({
                     </div>
                   </GlassCard>
                 </div>
-              </div>
-
-              <div className="mt-8">
-                {analysis.followDecision ? (
-                  <GlassCard className="mb-4 flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <div className="mb-2 flex items-center gap-2">
-                        <Zap className="h-4 w-4 text-neon-blue" />
-                        <h3 className="text-sm font-semibold text-foreground">
-                          跟单判断
-                        </h3>
-                        <FollowDecisionBadge
-                          verdict={analysis.followDecision.verdict}
-                        />
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        {analysis.followDecision.summary}
-                      </p>
-                      {analysis.metrics ? (
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          当前交易覆盖率：{analysis.metrics.parsedTradeCoverageLabel}
-                          。这表示我们只在最近扫描的链上签名里，还原出了这部分明确的买卖。
-                        </p>
-                      ) : null}
-                    </div>
-                    <Button
-                      onClick={() => {
-                        setIsAutoCopyEnabled(true);
-                        router.push(
-                          `/copy-trading?mode=${analysis.mode}&source=${encodeURIComponent(
-                            analysis.address,
-                          )}&autostart=1`,
-                        );
-                      }}
-                      className={`group relative h-12 min-w-[180px] overflow-hidden rounded-2xl text-sm font-semibold transition-all duration-300 ${
-                        isAutoCopyEnabled
-                          ? "bg-profit text-primary-foreground shadow-[0_0_30px_rgba(16,185,129,0.4)]"
-                          : analysis.followDecision.verdict === "follow"
-                            ? "bg-gradient-to-r from-neon-purple to-neon-blue text-foreground hover:shadow-[0_0_30px_rgba(139,92,246,0.4)]"
-                            : "bg-secondary text-muted-foreground"
-                      }`}
-                    >
-                      <span className="relative z-10 flex items-center justify-center gap-2">
-                        <Zap
-                          className={`h-5 w-5 ${isAutoCopyEnabled ? "animate-pulse" : ""}`}
-                        />
-                        {isAutoCopyEnabled ? "跳转到跟单控制台" : "开启自动跟单"}
-                      </span>
-                      {!isAutoCopyEnabled &&
-                      analysis.followDecision.verdict === "follow" ? (
-                        <div className="absolute inset-0 bg-gradient-to-r from-neon-blue to-neon-purple opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-                      ) : null}
-                    </Button>
-                  </GlassCard>
-                ) : null}
               </div>
             </>
           ) : null}

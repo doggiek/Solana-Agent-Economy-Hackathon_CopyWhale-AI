@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { GlassCard } from "@/components/dashboard/glass-card";
 import {
+  ArrowLeft,
   ArrowUpRight,
   ArrowDownRight,
   TrendingUp,
@@ -14,7 +15,6 @@ import {
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
 import { ConnectButton, useWallet } from "@/components/wallet/wallet-connect";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -33,45 +33,60 @@ const tradeHistory = [
     token: "BONK",
     action: "sell",
     amount: "12.5M",
+    copiedUsd: 120,
     profit: 320,
     timestamp: "5 分钟前",
     color: "#f97316",
+    sourceLabel: "Demo",
+    status: "executed" as const,
   },
   {
     id: 2,
     token: "PEPE",
     action: "buy",
     amount: "8.2M",
+    copiedUsd: 80,
     profit: null,
     timestamp: "12 分钟前",
     color: "#10b981",
+    sourceLabel: "Demo",
+    status: "open" as const,
   },
   {
     id: 3,
     token: "WIF",
     action: "sell",
     amount: "5,000",
+    copiedUsd: 95,
     profit: 890,
     timestamp: "45 分钟前",
     color: "#06b6d4",
+    sourceLabel: "Demo",
+    status: "executed" as const,
   },
   {
     id: 4,
     token: "SHIB",
     action: "sell",
     amount: "500M",
+    copiedUsd: 60,
     profit: -120,
     timestamp: "1.5 小时前",
     color: "#ef4444",
+    sourceLabel: "Demo",
+    status: "executed" as const,
   },
   {
     id: 5,
     token: "ARB",
     action: "buy",
     amount: "2,500",
+    copiedUsd: 75,
     profit: null,
     timestamp: "2 小时前",
     color: "#8b5cf6",
+    sourceLabel: "Demo",
+    status: "open" as const,
   },
 ];
 
@@ -120,6 +135,8 @@ const activityLog = [
   },
 ];
 
+const LIVE_WATCHLIST_STORAGE_KEY = "copywhale-live-watchlist";
+
 interface LiveTradeSignal {
   id: string;
   source: string;
@@ -140,6 +157,20 @@ interface LiveActivityItem {
   timestamp: string;
 }
 
+interface FollowTask {
+  key: string;
+  source: string;
+  sourceShort: string;
+  status: "running" | "paused" | "error";
+  riskLevel: "low" | "medium" | "high";
+  copyPercentage: number;
+  signalCount: number;
+  latestSignalLabel: string;
+  latestSignalTimestamp: string;
+  realizedProfitUsd: number;
+  openPositions: number;
+}
+
 interface SimulatedPosition {
   key: string;
   source: string;
@@ -149,6 +180,21 @@ interface SimulatedPosition {
   quantity: number;
   costUsd: number;
   lastMarkUsd: number;
+  currentValueUsd: number;
+}
+
+interface SimulatedTradeRecord {
+  id: string;
+  source: string;
+  sourceLabel: string;
+  token: string;
+  action: "buy" | "sell";
+  amount: string;
+  copiedUsd: number;
+  profit: number | null;
+  timestamp: string;
+  color: string;
+  status: "executed" | "skipped" | "open";
 }
 
 function shortenAddress(address: string) {
@@ -222,14 +268,13 @@ function buildSimulatedPortfolio(
     maxPositionUsd: number;
     stopLossPct: number;
     takeProfitPct: number;
+    pausedSources: Set<string>;
   },
 ) {
   const ratio = copyPercentage / 100;
   const chronological = [...signals].reverse();
   const openPositions = new Map<string, SimulatedPosition>();
-  const history: Array<
-    LiveTradeSignal & { profit: number | null; copiedUsd: number; sourceLabel: string }
-  > = [];
+  const history: SimulatedTradeRecord[] = [];
   const activity: LiveActivityItem[] = [];
   let realizedProfit = 0;
 
@@ -240,12 +285,23 @@ function buildSimulatedPortfolio(
     const key = `${signal.source}:${signal.token}`;
     const current = openPositions.get(key);
     const isMemeCandidate = signal.token !== "SOL";
+    const isSourcePaused = options.pausedSources.has(signal.source);
 
     if (signal.action === "buy") {
       if (!options.isAutoCopyEnabled) {
         activity.push({
           id: `${signal.id}-paused`,
           message: `检测到 ${sourceLabel} 买入 ${signal.token}，但自动跟单未开启，当前仅观察`,
+          type: "warning",
+          timestamp: signal.timestamp,
+        });
+        continue;
+      }
+
+      if (isSourcePaused) {
+        activity.push({
+          id: `${signal.id}-task-paused`,
+          message: `${sourceLabel} 当前已暂停，跳过 ${signal.token} 买入信号`,
           type: "warning",
           timestamp: signal.timestamp,
         });
@@ -281,22 +337,54 @@ function buildSimulatedPortfolio(
         quantity: 0,
         costUsd: 0,
         lastMarkUsd: 0,
+        currentValueUsd: 0,
       };
       next.quantity += quantity;
       next.costUsd += copiedUsd;
       next.lastMarkUsd = copiedUsd;
+      next.currentValueUsd = copiedUsd;
       openPositions.set(key, next);
 
       history.push({
-        ...signal,
+        id: signal.id,
+        source: signal.source,
+        token: signal.token,
+        action: signal.action,
+        amount: signal.amount,
+        timestamp: signal.timestamp,
+        color: signal.color,
         copiedUsd,
         profit: null,
         sourceLabel,
+        status: "open",
       });
       activity.push({
         id: `${signal.id}-detect`,
         message: `检测到 ${sourceLabel} 买入 ${signal.token}，已生成模拟买入信号`,
         type: "detect",
+        timestamp: signal.timestamp,
+      });
+      continue;
+    }
+
+    if (isSourcePaused) {
+      history.push({
+        id: signal.id,
+        source: signal.source,
+        token: signal.token,
+        action: signal.action,
+        amount: signal.amount,
+        timestamp: signal.timestamp,
+        color: signal.color,
+        copiedUsd,
+        profit: null,
+        sourceLabel,
+        status: "skipped",
+      });
+      activity.push({
+        id: `${signal.id}-task-paused-sell`,
+        message: `${sourceLabel} 当前已暂停，卖出信号仅记录不执行`,
+        type: "warning",
         timestamp: signal.timestamp,
       });
       continue;
@@ -319,10 +407,17 @@ function buildSimulatedPortfolio(
 
       realizedProfit += profit;
       history.push({
-        ...signal,
+        id: signal.id,
+        source: signal.source,
+        token: signal.token,
+        action: signal.action,
+        amount: signal.amount,
+        timestamp: signal.timestamp,
+        color: signal.color,
         copiedUsd,
         profit,
         sourceLabel,
+        status: "executed",
       });
       activity.push({
         id: `${signal.id}-execute`,
@@ -332,10 +427,17 @@ function buildSimulatedPortfolio(
       });
     } else {
       history.push({
-        ...signal,
+        id: signal.id,
+        source: signal.source,
+        token: signal.token,
+        action: signal.action,
+        amount: signal.amount,
+        timestamp: signal.timestamp,
+        color: signal.color,
         copiedUsd,
         profit: null,
         sourceLabel,
+        status: "skipped",
       });
       activity.push({
         id: `${signal.id}-warning`,
@@ -368,12 +470,59 @@ function buildSimulatedPortfolio(
     }
   }
 
+  for (const position of openPositions.values()) {
+    position.currentValueUsd = Number(position.lastMarkUsd.toFixed(2));
+  }
+
   return {
     history: history.reverse().slice(0, 18),
     activity: activity.reverse().slice(0, 18),
     openPositions: Array.from(openPositions.values()),
     realizedProfit: Number(realizedProfit.toFixed(2)),
   };
+}
+
+function buildFollowTasks(
+  analyses: WalletAnalysis[],
+  simulatedPortfolio: {
+    history: SimulatedTradeRecord[];
+    openPositions: SimulatedPosition[];
+  },
+  options: {
+    isAutoCopyEnabled: boolean;
+    riskLevel: "low" | "medium" | "high";
+    copyPercentage: number;
+    pausedSources: Set<string>;
+  },
+): FollowTask[] {
+  return analyses.map((analysis) => {
+    const latestItem = analysis.listItems[0];
+    const isPaused = options.pausedSources.has(analysis.address);
+    const realizedProfitUsd = simulatedPortfolio.history
+      .filter(
+        (record) =>
+          record.source === analysis.address && typeof record.profit === "number",
+      )
+      .reduce((sum, record) => sum + (record.profit || 0), 0);
+    const openPositions = simulatedPortfolio.openPositions.filter(
+      (position) => position.source === analysis.address,
+    ).length;
+    return {
+      key: analysis.address,
+      source: analysis.address,
+      sourceShort: shortenAddress(analysis.address),
+      status: options.isAutoCopyEnabled && !isPaused ? "running" : "paused",
+      riskLevel: options.riskLevel,
+      copyPercentage: options.copyPercentage,
+      signalCount: analysis.metrics?.recentTradeCount ?? analysis.listItems.length,
+      latestSignalLabel: latestItem
+        ? `${latestItem.action === "buy" ? "买入" : latestItem.action === "sell" ? "卖出" : "观察"} ${latestItem.token}`
+        : "等待实时信号",
+      latestSignalTimestamp: latestItem?.subtitle || "暂无更新",
+      realizedProfitUsd: Number(realizedProfitUsd.toFixed(2)),
+      openPositions,
+    };
+  });
 }
 
 function TokenIcon({ token, color }: { token: string; color: string }) {
@@ -402,18 +551,39 @@ function ActivityIcon({ type }: { type: string }) {
   }
 }
 
+function formatUsd(value: number) {
+  const sign = value > 0 ? "+" : "";
+  return `${sign}$${value.toFixed(2)}`;
+}
+
 export default function CopyTradingPage() {
   const searchParams = useSearchParams();
   const [hasMounted, setHasMounted] = useState(false);
   const mode = searchParams.get("mode") === "live" ? "live" : "demo";
   const sourceAddress = searchParams.get("source") || "";
   const autoStart = searchParams.get("autostart") === "1";
+  const ratioParam = Number(searchParams.get("ratio") || "50");
+  const normalizedRatio = Number.isFinite(ratioParam)
+    ? Math.min(100, Math.max(10, ratioParam))
+    : 50;
+  const riskParam = searchParams.get("risk");
+  const normalizedRisk =
+    riskParam === "low" || riskParam === "medium" || riskParam === "high"
+      ? riskParam
+      : "medium";
   const [isAutoCopyEnabled, setIsAutoCopyEnabled] = useState(autoStart);
-  const [copyPercentage, setCopyPercentage] = useState([50]);
+  const [copyPercentage, setCopyPercentage] = useState([normalizedRatio]);
   const [riskLevel, setRiskLevel] = useState<"low" | "medium" | "high">(
-    "medium",
+    normalizedRisk,
   );
   const [watchlistInput, setWatchlistInput] = useState(sourceAddress);
+  const [pausedSources, setPausedSources] = useState<string[]>([]);
+  const [selectedSourceFilter, setSelectedSourceFilter] = useState("all");
+  const [selectedTokenFilter, setSelectedTokenFilter] = useState("all");
+  const [positionSortBy, setPositionSortBy] = useState<
+    "value_desc" | "source_asc" | "token_asc"
+  >("value_desc");
+  const [closedPositionKeys, setClosedPositionKeys] = useState<string[]>([]);
   const { isConnected } = useWallet();
   const [liveAnalyses, setLiveAnalyses] = useState<WalletAnalysis[]>([]);
   const [liveError, setLiveError] = useState<string | null>(null);
@@ -428,8 +598,49 @@ export default function CopyTradingPage() {
   }, [autoStart, sourceAddress, mode]);
 
   useEffect(() => {
-    setWatchlistInput(sourceAddress);
-  }, [sourceAddress]);
+    setCopyPercentage([normalizedRatio]);
+  }, [normalizedRatio, sourceAddress, mode]);
+
+  useEffect(() => {
+    setRiskLevel(normalizedRisk);
+  }, [normalizedRisk, sourceAddress, mode]);
+
+  useEffect(() => {
+    if (!hasMounted || mode !== "live") {
+      return;
+    }
+
+    const storedInput =
+      window.localStorage.getItem(LIVE_WATCHLIST_STORAGE_KEY) || "";
+    const storedSources = parseSourceAddresses(storedInput);
+    const mergedSources = sourceAddress
+      ? Array.from(new Set([...storedSources, sourceAddress]))
+      : storedSources;
+    const nextInput = mergedSources.join("\n");
+
+    setWatchlistInput(nextInput);
+
+    if (nextInput !== storedInput) {
+      window.localStorage.setItem(LIVE_WATCHLIST_STORAGE_KEY, nextInput);
+    }
+  }, [hasMounted, mode, sourceAddress]);
+
+  useEffect(() => {
+    if (!hasMounted || mode !== "live") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      LIVE_WATCHLIST_STORAGE_KEY,
+      parseSourceAddresses(watchlistInput).join("\n"),
+    );
+  }, [hasMounted, mode, watchlistInput]);
+
+  useEffect(() => {
+    setPausedSources((current) =>
+      current.filter((source) => parseSourceAddresses(watchlistInput).includes(source)),
+    );
+  }, [watchlistInput]);
 
   const sourceAddresses = useMemo(
     () => parseSourceAddresses(watchlistInput),
@@ -500,7 +711,7 @@ export default function CopyTradingPage() {
 
   const sourceLabel = useMemo(() => {
     if (sourceAddresses.length === 0) {
-      return mode === "live" ? "未选择 live 地址" : "Demo smart money";
+      return mode === "live" ? "未选择 live 地址" : "Demo 聪明钱";
     }
 
     if (sourceAddresses.length === 1) {
@@ -511,15 +722,16 @@ export default function CopyTradingPage() {
   }, [mode, sourceAddresses]);
 
   const panelTitle =
-    mode === "live" ? "实时跟单控制" : "Demo 跟单控制";
+    mode === "live" ? "跟单任务池" : "Demo 跟单控制";
   const panelSubtitle =
     mode === "live"
-      ? "当前会话会围绕你刚才选中的 smart money 地址配置跟单，并把最近交易转成模拟执行信号。"
-      : "当前为演示模式，下面的数据和执行日志都是 mock。";
+      ? "这里展示当前会话里正在跟踪的 smart money 地址池与任务运行状态。"
+      : "当前为演示模式，下面的数据和执行日志来自内置 demo 数据集。";
   const liveSignals = useMemo(
     () => buildLiveSignals(liveAnalyses),
     [liveAnalyses],
   );
+  const pausedSourceSet = useMemo(() => new Set(pausedSources), [pausedSources]);
   const simulatedPortfolio = useMemo(
     () =>
       buildSimulatedPortfolio(liveSignals, copyPercentage[0], {
@@ -527,8 +739,26 @@ export default function CopyTradingPage() {
         maxPositionUsd: riskLevel === "low" ? 30 : riskLevel === "medium" ? 75 : 150,
         stopLossPct: riskLevel === "low" ? 4 : riskLevel === "medium" ? 6 : 10,
         takeProfitPct: riskLevel === "low" ? 8 : riskLevel === "medium" ? 12 : 18,
+        pausedSources: pausedSourceSet,
       }),
-    [copyPercentage, isAutoCopyEnabled, liveSignals, riskLevel],
+    [copyPercentage, isAutoCopyEnabled, liveSignals, pausedSourceSet, riskLevel],
+  );
+  const followTasks = useMemo(
+    () =>
+      buildFollowTasks(liveAnalyses, simulatedPortfolio, {
+        isAutoCopyEnabled,
+        riskLevel,
+        copyPercentage: copyPercentage[0],
+        pausedSources: pausedSourceSet,
+      }),
+    [
+      copyPercentage,
+      isAutoCopyEnabled,
+      liveAnalyses,
+      pausedSourceSet,
+      riskLevel,
+      simulatedPortfolio,
+    ],
   );
   const resolvedStats =
     mode === "live"
@@ -538,20 +768,56 @@ export default function CopyTradingPage() {
           activeTrades: simulatedPortfolio.openPositions.length,
           watchedWallets: sourceAddresses.length,
           queuedSignals: liveSignals.length,
+          memeTrades: liveAnalyses.reduce(
+            (sum, analysis) => sum + (analysis.metrics?.memeTradeCount ?? 0),
+            0,
+          ),
+          trackedTokens: Array.from(
+            new Set(simulatedPortfolio.history.map((trade) => trade.token)),
+          ).length,
         }
-      : { ...stats, watchedWallets: 1, queuedSignals: tradeHistory.length };
+      : {
+          ...stats,
+          watchedWallets: 1,
+          queuedSignals: tradeHistory.length,
+          memeTrades: 0,
+          trackedTokens: Array.from(
+            new Set(tradeHistory.map((trade) => trade.token)),
+          ).length,
+        };
   const resolvedTradeHistory =
     mode === "live"
-      ? simulatedPortfolio.history.map((trade, index) => ({
-          id: index + 1,
-          token: trade.token,
-          action: trade.action,
-          amount: `${trade.amount} · 跟单 $${trade.copiedUsd.toFixed(2)}`,
-          profit: trade.profit,
-          timestamp: `${trade.sourceLabel} · ${trade.timestamp}`,
-          color: trade.color,
-        }))
+      ? simulatedPortfolio.history
       : tradeHistory;
+  const executionSourceOptions = useMemo(() => {
+    if (mode !== "live") {
+      return [];
+    }
+
+    return Array.from(
+      new Set(resolvedTradeHistory.map((trade) => trade.sourceLabel)),
+    );
+  }, [mode, resolvedTradeHistory]);
+  const executionTokenOptions = useMemo(() => {
+    if (mode !== "live") {
+      return [];
+    }
+
+    return Array.from(new Set(resolvedTradeHistory.map((trade) => trade.token)));
+  }, [mode, resolvedTradeHistory]);
+  const filteredTradeHistory = useMemo(() => {
+    if (mode !== "live") {
+      return resolvedTradeHistory;
+    }
+
+    return resolvedTradeHistory.filter((trade) => {
+      const sourceMatches =
+        selectedSourceFilter === "all" || trade.sourceLabel === selectedSourceFilter;
+      const tokenMatches =
+        selectedTokenFilter === "all" || trade.token === selectedTokenFilter;
+      return sourceMatches && tokenMatches;
+    });
+  }, [mode, resolvedTradeHistory, selectedSourceFilter, selectedTokenFilter]);
   const resolvedActivityLog =
     mode === "live"
       ? [
@@ -575,11 +841,43 @@ export default function CopyTradingPage() {
           ...simulatedPortfolio.activity,
         ]
       : activityLog;
+  const visibleOpenPositions = useMemo(() => {
+    const positions = simulatedPortfolio.openPositions.filter(
+      (position) => !closedPositionKeys.includes(position.key),
+    );
 
-  const riskColors = {
-    low: "border-profit/50 bg-profit/10 text-profit",
-    medium: "border-neon-purple/50 bg-neon-purple/10 text-neon-purple",
-    high: "border-loss/50 bg-loss/10 text-loss",
+    const sorted = [...positions];
+    if (positionSortBy === "source_asc") {
+      sorted.sort((a, b) => a.sourceShort.localeCompare(b.sourceShort));
+    } else if (positionSortBy === "token_asc") {
+      sorted.sort((a, b) => a.token.localeCompare(b.token));
+    } else {
+      sorted.sort((a, b) => b.currentValueUsd - a.currentValueUsd);
+    }
+
+    return sorted;
+  }, [closedPositionKeys, positionSortBy, simulatedPortfolio.openPositions]);
+
+  const toggleTaskPause = (source: string) => {
+    setPausedSources((current) =>
+      current.includes(source)
+        ? current.filter((item) => item !== source)
+        : [...current, source],
+    );
+  };
+
+  const removeTask = (source: string) => {
+    const nextSources = parseSourceAddresses(watchlistInput).filter(
+      (item) => item !== source,
+    );
+    setWatchlistInput(nextSources.join("\n"));
+    setPausedSources((current) => current.filter((item) => item !== source));
+  };
+
+  const closePosition = (positionKey: string) => {
+    setClosedPositionKeys((current) =>
+      current.includes(positionKey) ? current : [...current, positionKey],
+    );
   };
 
   if (!hasMounted) {
@@ -592,21 +890,21 @@ export default function CopyTradingPage() {
         </div>
         <div className="relative z-10">
           <header className="border-b border-glass-border bg-glass/50 backdrop-blur-xl">
-            <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
+            <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
               <div className="flex items-center justify-between">
                 <Link href="/" className="flex items-center gap-2">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-neon-purple to-neon-blue">
                     <Bot className="h-5 w-5 text-foreground" />
                   </div>
                   <span className="text-lg font-bold text-foreground">
-                    TradeBot
+                    CopyWhale AI
                   </span>
                 </Link>
                 <ConnectButton />
               </div>
             </div>
           </header>
-          <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+          <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
             <GlassCard className="flex min-h-[240px] items-center justify-center p-8">
               <div className="text-center">
                 <Loader2 className="mx-auto h-7 w-7 animate-spin text-neon-purple" />
@@ -631,51 +929,52 @@ export default function CopyTradingPage() {
       </div>
 
       <div className="relative z-10">
-        {/* Header */}
         <header className="border-b border-glass-border bg-glass/50 backdrop-blur-xl">
-          <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              {/* Left: Logo + Status */}
-              <div className="flex items-center gap-4">
-                <Link href="/" className="flex items-center gap-2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-neon-purple to-neon-blue">
-                    <Bot className="h-5 w-5 text-foreground" />
-                  </div>
-                  <span className="text-lg font-bold text-foreground">
-                    TradeBot
-                  </span>
-                </Link>
-
-                {/* Status Badge */}
-                <div
-                  className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium ${
-                    isAutoCopyEnabled
-                      ? "border border-profit/30 bg-profit/10 text-profit"
-                      : "border border-loss/30 bg-loss/10 text-loss"
-                  }`}
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <Link href="/">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10 rounded-xl border border-glass-border bg-glass/50 text-muted-foreground"
                 >
-                  <span
-                    className={`h-2 w-2 rounded-full ${
-                      isAutoCopyEnabled ? "animate-pulse bg-profit" : "bg-loss"
-                    }`}
-                  />
-                  {isAutoCopyEnabled ? "运行中" : "已停止"}
-                </div>
-                <div className="rounded-full border border-glass-border bg-secondary/40 px-3 py-1.5 text-sm font-medium text-muted-foreground">
-                  {mode === "live" ? "Live" : "Demo"}
-                </div>
-              </div>
-
-              {/* Right: Wallet */}
+                  <ArrowLeft className="h-5 w-5" />
+                </Button>
+              </Link>
               <div className="flex items-center gap-2">
-                <ConnectButton />
+                <div className="flex items-center gap-2">
+                  <Bot className="h-5 w-5 text-neon-purple" />
+                  <h1 className="text-xl font-semibold text-foreground">
+                    交易面板
+                  </h1>
+                  <div
+                    className={`ml-1 flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+                      isAutoCopyEnabled
+                        ? "border border-profit/30 bg-profit/10 text-profit"
+                        : "border border-loss/30 bg-loss/10 text-loss"
+                    }`}
+                  >
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        isAutoCopyEnabled ? "animate-pulse bg-profit" : "bg-loss"
+                      }`}
+                    />
+                    {isAutoCopyEnabled ? "运行中" : "已停止"}
+                  </div>
+                  <span className="rounded-full border border-glass-border bg-secondary/40 px-3 py-1 text-xs font-semibold text-muted-foreground">
+                    {mode === "live" ? "Live" : "Demo"}
+                  </span>
+                </div>
               </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <ConnectButton />
             </div>
           </div>
         </header>
 
         {/* Main Content */}
-        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+        <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
           {mode === "live" && isLiveLoading ? (
             <GlassCard className="mb-6 flex min-h-[180px] items-center justify-center p-8">
               <div className="text-center">
@@ -697,116 +996,12 @@ export default function CopyTradingPage() {
           <div className="grid gap-6 lg:grid-cols-3">
             {/* Left Column: Controls */}
             <div className="space-y-6 lg:col-span-2">
-              {/* Main Controls */}
-              <GlassCard className="p-6">
-                <div className="mb-6">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-semibold text-foreground">
-                      {panelTitle}
-                    </h2>
-                    <span className="rounded-full border border-glass-border bg-secondary/40 px-3 py-1 text-xs font-medium text-muted-foreground">
-                      {sourceLabel}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {panelSubtitle}
-                  </p>
-                </div>
-
-                {mode === "live" ? (
-                  <div className="mb-6">
-                    <div className="mb-3 flex items-center justify-between">
-                      <p className="font-medium text-foreground">跟踪地址池</p>
-                      <span className="text-xs text-muted-foreground">
-                        支持多个地址，换行或逗号分隔
-                      </span>
-                    </div>
-                    <textarea
-                      value={watchlistInput}
-                      onChange={(event) => setWatchlistInput(event.target.value)}
-                      className="min-h-[96px] w-full rounded-xl border border-glass-border bg-secondary/30 px-4 py-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-neon-purple/50"
-                      placeholder="输入一个或多个 smart money 地址"
-                    />
-                  </div>
-                ) : null}
-
-                {/* Auto Copy Toggle */}
-                <div className="mb-6 flex items-center justify-between rounded-xl border border-glass-border bg-secondary/30 p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-neon-purple/20 to-neon-blue/20">
-                      <Zap className="h-5 w-5 text-neon-purple" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">自动跟单</p>
-                      <p className="text-sm text-muted-foreground">
-                        {mode === "live"
-                          ? "只跟 meme buy；卖出时同步卖；遵守单币仓位上限与止盈止损"
-                          : "追踪聪明钱并自动复制交易"}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setIsAutoCopyEnabled(!isAutoCopyEnabled)}
-                    className={`relative h-7 w-14 rounded-full transition-all duration-300 ${
-                      isAutoCopyEnabled
-                        ? "bg-gradient-to-r from-neon-purple to-neon-blue shadow-[0_0_15px_rgba(139,92,246,0.4)]"
-                        : "bg-secondary"
-                    }`}
-                  >
-                    <div
-                      className={`absolute top-1 h-5 w-5 rounded-full bg-foreground shadow-md transition-all duration-300 ${
-                        isAutoCopyEnabled ? "left-8" : "left-1"
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                {/* Copy Percentage Slider */}
-                <div className="mb-6">
-                  <div className="mb-3 flex items-center justify-between">
-                    <p className="font-medium text-foreground">跟单比例</p>
-                    <span className="rounded-lg bg-neon-purple/20 px-3 py-1 text-sm font-semibold text-neon-purple">
-                      {copyPercentage[0]}%
-                    </span>
-                  </div>
-                  <Slider
-                    value={copyPercentage}
-                    onValueChange={setCopyPercentage}
-                    min={10}
-                    max={100}
-                    step={5}
-                    className="py-2"
-                  />
-                  <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-                    <span>10%</span>
-                    <span>100%</span>
-                  </div>
-                </div>
-
-                {/* Risk Level Selector */}
-                <div>
-                  <p className="mb-3 font-medium text-foreground">风险等级</p>
-                  <div className="grid grid-cols-3 gap-3">
-                    {(["low", "medium", "high"] as const).map((level) => (
-                      <button
-                        key={level}
-                        onClick={() => setRiskLevel(level)}
-                        className={`rounded-xl border px-4 py-3 text-sm font-medium transition-all duration-200 ${
-                          riskLevel === level
-                            ? riskColors[level]
-                            : "border-glass-border bg-secondary/30 text-muted-foreground hover:bg-secondary/50"
-                        }`}
-                      >
-                        {level === "low" && "保守"}
-                        {level === "medium" && "平衡"}
-                        {level === "high" && "激进"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </GlassCard>
-
-              {/* Stats */}
+              <div className="mb-4 flex items-center gap-2 px-1">
+                <Activity className="h-4 w-4 text-neon-blue" />
+                <p className="text-base font-semibold text-foreground">
+                  控制台概览
+                </p>
+              </div>
               <div className="grid grid-cols-3 gap-4">
                 <GlassCard className="p-4 text-center">
                   <p className="text-2xl font-bold text-profit">
@@ -822,11 +1017,11 @@ export default function CopyTradingPage() {
                 <GlassCard className="p-4 text-center">
                   <p className="text-2xl font-bold text-foreground">
                     {mode === "live"
-                      ? `${resolvedStats.queuedSignals}`
+                      ? `${resolvedStats.trackedTokens}`
                       : `+$${resolvedStats.dailyProfit.toLocaleString()}`}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {mode === "live" ? "信号队列" : "今日收益"}
+                    {mode === "live" ? "交易 Token" : "今日收益"}
                   </p>
                 </GlassCard>
 
@@ -838,77 +1033,328 @@ export default function CopyTradingPage() {
                 </GlassCard>
               </div>
 
-              {mode === "live" ? (
-                <GlassCard className="p-5">
-                  <div className="mb-4 flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-foreground">
-                      模拟收益
-                    </h2>
-                    <span className="text-sm text-muted-foreground">
-                      基于 recent trades 的简化跟单策略
+              {mode === "demo" ? (
+                <GlassCard className="p-6">
+                  <div className="mb-6 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-neon-purple/20 to-neon-blue/20">
+                        <Zap className="h-5 w-5 text-neon-purple" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-semibold text-foreground">
+                          {panelTitle}
+                        </h2>
+                        <p className="text-sm text-muted-foreground">
+                          {panelSubtitle}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-glass-border bg-secondary/40 px-3 py-1 text-xs font-medium text-muted-foreground">
+                      {sourceLabel}
                     </span>
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <div className="rounded-xl border border-glass-border bg-secondary/30 p-4">
-                      <p className="text-2xl font-bold text-profit">
-                        ${resolvedStats.totalProfit.toFixed(2)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        模拟已实现收益
-                      </p>
+
+                  <div className="flex items-center justify-between rounded-xl border border-glass-border bg-secondary/30 p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-neon-purple/20 to-neon-blue/20">
+                        <Zap className="h-5 w-5 text-neon-purple" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">自动跟单</p>
+                        <p className="text-sm text-muted-foreground">
+                          追踪聪明钱并自动复制交易
+                        </p>
+                      </div>
                     </div>
-                    <div className="rounded-xl border border-glass-border bg-secondary/30 p-4">
-                      <p className="text-2xl font-bold text-foreground">
-                        {copyPercentage[0]}%
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        当前跟单比例
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-glass-border bg-secondary/30 p-4">
-                      <p className="text-2xl font-bold text-neon-purple">
-                        {simulatedPortfolio.openPositions.length}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        当前模拟持仓
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-xl border border-glass-border bg-secondary/20 p-3">
-                      <p className="text-sm font-medium text-foreground">
-                        单币仓位上限
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        ${riskLevel === "low" ? 30 : riskLevel === "medium" ? 75 : 150}
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-glass-border bg-secondary/20 p-3">
-                      <p className="text-sm font-medium text-foreground">
-                        模拟止损
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        -{riskLevel === "low" ? 4 : riskLevel === "medium" ? 6 : 10}%
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-glass-border bg-secondary/20 p-3">
-                      <p className="text-sm font-medium text-foreground">
-                        模拟止盈
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        +{riskLevel === "low" ? 8 : riskLevel === "medium" ? 12 : 18}%
-                      </p>
-                    </div>
+                    <button
+                      onClick={() => setIsAutoCopyEnabled(!isAutoCopyEnabled)}
+                      className={`relative h-7 w-14 rounded-full transition-all duration-300 ${
+                        isAutoCopyEnabled
+                          ? "bg-gradient-to-r from-neon-purple to-neon-blue shadow-[0_0_15px_rgba(139,92,246,0.4)]"
+                          : "bg-secondary"
+                      }`}
+                    >
+                      <div
+                        className={`absolute top-1 h-5 w-5 rounded-full bg-foreground shadow-md transition-all duration-300 ${
+                          isAutoCopyEnabled ? "left-8" : "left-1"
+                        }`}
+                      />
+                    </button>
                   </div>
                 </GlassCard>
+              ) : null}
+
+              {mode === "live" ? (
+                <>
+                  <GlassCard className="p-5">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-neon-blue">
+                          Tasks
+                        </p>
+                        <h2 className="text-lg font-semibold text-foreground">
+                          跟单任务
+                        </h2>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-muted-foreground">
+                          {sourceAddresses.length} 个地址正在跟踪
+                        </span>
+                        <button
+                          onClick={() => setIsAutoCopyEnabled(!isAutoCopyEnabled)}
+                          className={`relative h-7 w-14 rounded-full transition-all duration-300 ${
+                            isAutoCopyEnabled
+                              ? "bg-gradient-to-r from-neon-purple to-neon-blue shadow-[0_0_15px_rgba(139,92,246,0.4)]"
+                              : "bg-secondary"
+                          }`}
+                        >
+                          <div
+                            className={`absolute top-1 h-5 w-5 rounded-full bg-foreground shadow-md transition-all duration-300 ${
+                              isAutoCopyEnabled ? "left-8" : "left-1"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      {followTasks.length > 0 ? (
+                        followTasks.map((task) => (
+                          <div
+                            key={task.key}
+                            className="flex flex-col gap-3 rounded-xl border border-glass-border bg-secondary/25 p-4 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium text-foreground">
+                                  {task.sourceShort}
+                                </p>
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                    task.status === "running"
+                                      ? "border border-profit/30 bg-profit/10 text-profit"
+                                      : task.status === "paused"
+                                        ? "border border-loss/30 bg-loss/10 text-loss"
+                                        : "border border-glass-border bg-secondary/50 text-muted-foreground"
+                                  }`}
+                                >
+                                  {task.status === "running"
+                                    ? "运行中"
+                                    : task.status === "paused"
+                                      ? "已暂停"
+                                      : "异常"}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                {task.latestSignalLabel} · {task.latestSignalTimestamp}
+                              </p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 text-center text-xs text-muted-foreground sm:min-w-[220px]">
+                              <div className="rounded-lg bg-secondary/40 px-3 py-2">
+                                <p
+                                  className={`text-base font-semibold ${
+                                    task.realizedProfitUsd >= 0
+                                      ? "text-profit"
+                                      : "text-loss"
+                                  }`}
+                                >
+                                  {formatUsd(task.realizedProfitUsd)}
+                                </p>
+                                <p>任务收益</p>
+                              </div>
+                              <div className="rounded-lg bg-secondary/40 px-3 py-2">
+                                <p className="text-base font-semibold capitalize text-foreground">
+                                  {task.openPositions}
+                                </p>
+                                <p>持仓数</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 sm:self-stretch">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="border-glass-border bg-transparent text-muted-foreground hover:border-neon-purple/50 hover:bg-neon-purple/10 hover:text-foreground"
+                                onClick={() => toggleTaskPause(task.source)}
+                              >
+                                {task.status === "running" ? "暂停" : "恢复"}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="border-loss/30 bg-transparent text-loss hover:bg-loss/10"
+                                onClick={() => removeTask(task.source)}
+                              >
+                                移除
+                              </Button>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-glass-border bg-secondary/20 p-6 text-center text-sm text-muted-foreground">
+                          还没有 live 跟单任务。输入 smart money 地址后，这里会出现运行中的任务卡。
+                        </div>
+                      )}
+                    </div>
+                  </GlassCard>
+
+                  <GlassCard className="p-5">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-neon-purple">
+                          Portfolio
+                        </p>
+                        <h2 className="text-lg font-semibold text-foreground">
+                          当前持仓
+                        </h2>
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        当前模拟仓位与浮盈亏
+                      </span>
+                    </div>
+                    <div className="mb-4 grid gap-4 sm:grid-cols-3">
+                      <div className="rounded-xl border border-glass-border bg-secondary/30 p-4">
+                        <p className="text-2xl font-bold text-profit">
+                          ${resolvedStats.totalProfit.toFixed(2)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">模拟已实现收益</p>
+                      </div>
+                      <div className="rounded-xl border border-glass-border bg-secondary/30 p-4">
+                        <p className="text-2xl font-bold text-foreground">
+                          {copyPercentage[0]}%
+                        </p>
+                        <p className="text-xs text-muted-foreground">当前跟单比例</p>
+                      </div>
+                      <div className="rounded-xl border border-glass-border bg-secondary/30 p-4">
+                        <p className="text-2xl font-bold text-neon-purple">
+                          {visibleOpenPositions.length}
+                        </p>
+                        <p className="text-xs text-muted-foreground">当前模拟持仓</p>
+                      </div>
+                    </div>
+                    <div className="mb-4 grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-xl border border-glass-border bg-secondary/20 p-3">
+                        <p className="text-sm font-medium text-foreground">单币仓位上限</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          ${riskLevel === "low" ? 30 : riskLevel === "medium" ? 75 : 150}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-glass-border bg-secondary/20 p-3">
+                        <p className="text-sm font-medium text-foreground">模拟止损</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          -{riskLevel === "low" ? 4 : riskLevel === "medium" ? 6 : 10}%
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-glass-border bg-secondary/20 p-3">
+                        <p className="text-sm font-medium text-foreground">模拟止盈</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          +{riskLevel === "low" ? 8 : riskLevel === "medium" ? 12 : 18}%
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mb-4 flex items-center justify-end">
+                      <select
+                        value={positionSortBy}
+                        onChange={(event) =>
+                          setPositionSortBy(
+                            event.target.value as "value_desc" | "source_asc" | "token_asc",
+                          )
+                        }
+                        className="rounded-xl border border-glass-border bg-secondary/30 px-3 py-2 text-sm text-foreground outline-none focus:border-neon-purple/50"
+                      >
+                        <option value="value_desc">按持仓价值排序</option>
+                        <option value="source_asc">按来源地址排序</option>
+                        <option value="token_asc">按 Token 排序</option>
+                      </select>
+                    </div>
+                    <div className="space-y-3">
+                      {visibleOpenPositions.length > 0 ? (
+                        visibleOpenPositions.map((position) => {
+                          const unrealized =
+                            position.currentValueUsd - position.costUsd;
+                          const unrealizedPct =
+                            position.costUsd > 0
+                              ? (unrealized / position.costUsd) * 100
+                              : 0;
+                          return (
+                            <div
+                              key={position.key}
+                              className="flex items-center justify-between rounded-xl border border-glass-border bg-secondary/20 p-4"
+                            >
+                              <div className="flex items-center gap-3">
+                                <TokenIcon token={position.token} color={position.color} />
+                                <div>
+                                  <p className="font-medium text-foreground">
+                                    {position.token}
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    来源 {position.sourceShort} · 持仓 {position.quantity.toFixed(2)}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-3 gap-4 text-right text-sm">
+                                <div>
+                                  <p className="text-xs text-muted-foreground">成本</p>
+                                  <p className="font-medium text-foreground">
+                                    ${position.costUsd.toFixed(2)}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">当前价值</p>
+                                  <p className="font-medium text-foreground">
+                                    ${position.currentValueUsd.toFixed(2)}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-muted-foreground">浮盈亏</p>
+                                  <p
+                                    className={`font-medium ${
+                                      unrealized >= 0 ? "text-profit" : "text-loss"
+                                    }`}
+                                  >
+                                    {formatUsd(unrealized)}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {unrealizedPct >= 0 ? "+" : ""}
+                                    {unrealizedPct.toFixed(2)}%
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="ml-4">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-loss/30 bg-transparent text-loss hover:bg-loss/10"
+                                  onClick={() => closePosition(position.key)}
+                                >
+                                  关闭
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-glass-border bg-secondary/20 p-6 text-center text-sm text-muted-foreground">
+                          当前没有打开的模拟仓位。开启自动跟单并等到下一笔买入信号后，这里会出现仓位。
+                        </div>
+                      )}
+                    </div>
+                  </GlassCard>
+                </>
               ) : null}
 
               {/* Transaction History */}
               <GlassCard className="p-5">
                 <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-foreground">
-                    {mode === "live" ? "模拟执行记录" : "交易历史"}
-                  </h2>
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-profit">
+                        Execution
+                      </p>
+                      <h2 className="text-lg font-semibold text-foreground">
+                        {mode === "live" ? "执行记录" : "交易历史"}
+                      </h2>
+                    </div>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -918,10 +1364,38 @@ export default function CopyTradingPage() {
                     <ChevronRight className="ml-1 h-4 w-4" />
                   </Button>
                 </div>
+                {mode === "live" ? (
+                  <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                    <select
+                      value={selectedSourceFilter}
+                      onChange={(event) => setSelectedSourceFilter(event.target.value)}
+                      className="rounded-xl border border-glass-border bg-secondary/30 px-3 py-2 text-sm text-foreground outline-none focus:border-neon-purple/50"
+                    >
+                      <option value="all">全部来源地址</option>
+                      {executionSourceOptions.map((source) => (
+                        <option key={source} value={source}>
+                          {source}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={selectedTokenFilter}
+                      onChange={(event) => setSelectedTokenFilter(event.target.value)}
+                      className="rounded-xl border border-glass-border bg-secondary/30 px-3 py-2 text-sm text-foreground outline-none focus:border-neon-purple/50"
+                    >
+                      <option value="all">全部 Token</option>
+                      {executionTokenOptions.map((token) => (
+                        <option key={token} value={token}>
+                          {token}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
                 <div className="space-y-3">
-                  {resolvedTradeHistory.map((trade) => (
+                  {filteredTradeHistory.map((trade, index) => (
                     <div
-                      key={trade.id}
+                      key={mode === "live" ? trade.id : trade.id ?? index}
                       className="group flex items-center justify-between rounded-xl border border-transparent bg-secondary/30 p-3 transition-all duration-200 hover:border-glass-border hover:bg-secondary/50"
                     >
                       <div className="flex items-center gap-3">
@@ -947,11 +1421,30 @@ export default function CopyTradingPage() {
                             </span>
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            {trade.amount}
+                            {mode === "live"
+                              ? `${trade.amount} · 跟单 $${trade.copiedUsd.toFixed(2)}`
+                              : trade.amount}
                           </p>
                         </div>
                       </div>
                       <div className="text-right">
+                        {mode === "live" ? (
+                          <p
+                            className={`text-xs font-medium ${
+                              trade.status === "executed"
+                                ? "text-profit"
+                                : trade.status === "skipped"
+                                  ? "text-loss"
+                                  : "text-neon-blue"
+                            }`}
+                          >
+                            {trade.status === "executed"
+                              ? "executed"
+                              : trade.status === "skipped"
+                                ? "skipped"
+                                : "open"}
+                          </p>
+                        ) : null}
                         {trade.profit !== null ? (
                           <p
                             className={`font-medium ${
@@ -962,28 +1455,40 @@ export default function CopyTradingPage() {
                           </p>
                         ) : (
                           <p className="text-sm text-muted-foreground">
-                            持仓中
+                            {mode === "live" ? "待平仓" : "持仓中"}
                           </p>
                         )}
                         <p className="text-xs text-muted-foreground">
-                          {trade.timestamp}
+                          {mode === "live"
+                            ? `${trade.sourceLabel} · ${trade.timestamp}`
+                            : trade.timestamp}
                         </p>
                       </div>
                     </div>
                   ))}
+                  {filteredTradeHistory.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-glass-border bg-secondary/20 p-6 text-center text-sm text-muted-foreground">
+                      当前筛选条件下没有执行记录。
+                    </div>
+                  ) : null}
                 </div>
               </GlassCard>
             </div>
 
             {/* Right Column: Activity Log */}
             <GlassCard className="h-fit p-5 lg:sticky lg:top-6">
-              <div className="mb-4 flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-neon-purple/20 to-neon-blue/20">
-                  <Activity className="h-4 w-4 text-neon-purple" />
-                </div>
-                <h2 className="text-lg font-semibold text-foreground">
-                  Agent 活动日志
-                </h2>
+                <div className="mb-4 flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-neon-purple/20 to-neon-blue/20">
+                    <Activity className="h-4 w-4 text-neon-purple" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-neon-purple">
+                      Agent
+                    </p>
+                    <h2 className="text-lg font-semibold text-foreground">
+                      活动日志
+                    </h2>
+                  </div>
               </div>
 
               <div className="space-y-3">
