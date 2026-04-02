@@ -11,6 +11,7 @@ import {
   Sparkles,
   ArrowRight,
   Bot,
+  Radar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,6 +87,15 @@ export default function LandingPage() {
               </span>
             </div>
             <div className="flex items-center gap-3">
+              <Link href="/smart-wallets">
+                <Button
+                  variant="ghost"
+                  className="gap-2 text-muted-foreground transition-all duration-300 hover:bg-neon-blue/10 hover:text-foreground"
+                >
+                  <Radar className="h-4 w-4" />
+                  地址雷达
+                </Button>
+              </Link>
               <Link href="/copy-trading">
                 <Button
                   variant="ghost"
@@ -109,16 +119,6 @@ export default function LandingPage() {
               </h1>
               <div className="inline-flex items-center gap-1 rounded-full border border-glass-border bg-glass/60 p-1 backdrop-blur-sm">
                 <button
-                  onClick={() => setMode("demo")}
-                  className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
-                    mode === "demo"
-                      ? "bg-secondary text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  Demo
-                </button>
-                <button
                   onClick={() => setMode("live")}
                   className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
                     mode === "live"
@@ -127,6 +127,16 @@ export default function LandingPage() {
                   }`}
                 >
                   Live
+                </button>
+                <button
+                  onClick={() => setMode("demo")}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                    mode === "demo"
+                      ? "bg-secondary text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Demo
                 </button>
               </div>
             </div>
@@ -164,7 +174,7 @@ export default function LandingPage() {
                 className="group relative h-12 w-full overflow-hidden rounded-xl bg-gradient-to-r from-neon-purple to-neon-blue text-base font-medium text-foreground transition-all duration-300 hover:shadow-[0_0_30px_rgba(139,92,246,0.4)]"
               >
                 <span className="relative z-10 flex items-center justify-center gap-2">
-                  {mode === "live" ? "分析聪明钱（实时）" : "查看 Demo 分析"}
+                  {mode === "live" ? "分析聪明钱" : "查看 Demo 分析"}
                   <ArrowRight
                     className={`h-4 w-4 transition-transform duration-300 ${isHovered ? "translate-x-1" : ""}`}
                   />

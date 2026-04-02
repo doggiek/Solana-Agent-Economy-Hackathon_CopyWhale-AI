@@ -7,6 +7,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Brain,
+  CircleHelp,
   Copy,
   Check,
   TrendingUp,
@@ -16,13 +17,18 @@ import {
   Radio,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip as UITooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Area,
   AreaChart,
   ResponsiveContainer,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   XAxis,
   YAxis,
 } from "recharts";
@@ -55,6 +61,50 @@ function TagBadge({ tag }: { tag: string }) {
   );
 }
 
+function FollowDecisionBadge({ verdict }: { verdict: "follow" | "watch" | "avoid" }) {
+  const styles = {
+    follow: "border-profit/30 bg-profit/10 text-profit",
+    watch: "border-neon-blue/30 bg-neon-blue/10 text-neon-blue",
+    avoid: "border-loss/30 bg-loss/10 text-loss",
+  } as const;
+
+  const labels = {
+    follow: "可跟单",
+    watch: "先观察",
+    avoid: "暂回避",
+  } as const;
+
+  return (
+    <span
+      className={`rounded-full border px-3 py-1 text-xs font-semibold ${styles[verdict]}`}
+    >
+      {labels[verdict]}
+    </span>
+  );
+}
+
+function StatusBadge({
+  label,
+  tone,
+}: {
+  label: string;
+  tone?: "profit" | "neutral" | "warning";
+}) {
+  const styles = {
+    profit: "border-profit/30 bg-profit/10 text-profit",
+    neutral: "border-glass-border bg-secondary/60 text-muted-foreground",
+    warning: "border-loss/30 bg-loss/10 text-loss",
+  } as const;
+
+  return (
+    <span
+      className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${styles[tone || "neutral"]}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 function formatChartValue(value: number, prefix = "") {
   const abs = Math.abs(value);
   if (abs >= 1000000) {
@@ -72,6 +122,7 @@ export default function WalletAnalyticsPage({
   params: Promise<{ address: string }>;
 }) {
   const { address } = use(params);
+  const router = useRouter();
   const searchParams = useSearchParams();
   const mode = searchParams.get("mode") === "live" ? "live" : "demo";
 
@@ -134,6 +185,8 @@ export default function WalletAnalyticsPage({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const tradeDegraded = analysis?.metrics?.recentTradeStatus === "degraded";
 
   return (
     <div className="min-h-screen bg-background">
@@ -227,9 +280,22 @@ export default function WalletAnalyticsPage({
             <GlassCard className="p-8">
               <p className="text-lg font-semibold text-loss">加载失败</p>
               <p className="mt-2 text-sm text-muted-foreground">{error}</p>
-              <p className="mt-3 text-sm text-muted-foreground">
-                Live 模式请确认 `COVALENT_API_KEY` 已在 `.env.local` 配置。
-              </p>
+              <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+                <p>排查建议：</p>
+                <p>1. 确认 `.env.local` 里已有 `COVALENT_API_KEY`。</p>
+                <p>
+                  2. 如果报错和 recent trades / RPC 有关，请在 `.env.local`
+                  增加 `SOLANA_RPC_URL`；像 Tatum 这类服务还需要
+                  `SOLANA_RPC_API_KEY`。
+                </p>
+                <p>
+                  3. 修改 `.env.local` 后需要重启 `npm run dev`，Next.js
+                  才会重新读取环境变量。
+                </p>
+                <p>
+                  4. 目前 live 模式依赖 Covalent + Solana RPC，任一上游网络异常都可能影响部分数据。
+                </p>
+              </div>
             </GlassCard>
           ) : analysis ? (
             <>
@@ -264,6 +330,18 @@ export default function WalletAnalyticsPage({
                 </GlassCard>
               </div>
 
+              {tradeDegraded ? (
+                <GlassCard className="mb-6 border border-loss/20 p-4">
+                  <p className="text-sm font-medium text-loss">
+                    最近交易抓取受限
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    当前页面已经回退为资产视图。最常见原因是公共 Solana RPC 被限流；接入
+                    Helius 这类专用 RPC 后，recent trades、Meme 交易和买卖比会恢复。
+                  </p>
+                </GlassCard>
+              ) : null}
+
               <div className="mb-6 grid gap-4 sm:grid-cols-3">
                 {analysis.stats.map((stat) => (
                   <GlassCard key={stat.label} className="p-4 text-center">
@@ -278,9 +356,29 @@ export default function WalletAnalyticsPage({
                     >
                       {stat.value}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      {stat.label}
-                    </p>
+                    <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                      <span>{stat.label}</span>
+                      {stat.description ? (
+                        <UITooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="inline-flex cursor-help items-center"
+                              aria-label={`${stat.label} 说明`}
+                            >
+                              <CircleHelp className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            side="top"
+                            sideOffset={8}
+                            className="max-w-[260px] border border-glass-border bg-card text-muted-foreground shadow-[0_8px_32px_rgba(0,0,0,0.35)]"
+                          >
+                            {stat.description}
+                          </TooltipContent>
+                        </UITooltip>
+                      ) : null}
+                    </div>
                   </GlassCard>
                 ))}
               </div>
@@ -308,6 +406,12 @@ export default function WalletAnalyticsPage({
                               <span className="font-medium text-foreground">
                                 {item.token}
                               </span>
+                              {item.tokenDetail &&
+                              item.tokenDetail !== item.token ? (
+                                <span className="text-xs text-muted-foreground">
+                                  {item.tokenDetail}
+                                </span>
+                              ) : null}
                               {item.action && (
                                 <span
                                   className={`flex items-center gap-0.5 text-xs font-medium ${
@@ -324,6 +428,12 @@ export default function WalletAnalyticsPage({
                                   {item.action === "buy" ? "买入" : "卖出"}
                                 </span>
                               )}
+                              {item.statusLabel ? (
+                                <StatusBadge
+                                  label={item.statusLabel}
+                                  tone={item.statusTone}
+                                />
+                              ) : null}
                             </div>
                             <p className="text-sm text-muted-foreground">
                               {item.amount} · {item.value}
@@ -386,10 +496,10 @@ export default function WalletAnalyticsPage({
                               formatChartValue(value, analysis.chartValuePrefix)
                             }
                           />
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: "var(--card)",
-                              border: "1px solid var(--glass-border)",
+                      <RechartsTooltip
+                        contentStyle={{
+                          backgroundColor: "var(--card)",
+                          border: "1px solid var(--glass-border)",
                               borderRadius: "12px",
                               boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
                             }}
@@ -437,24 +547,58 @@ export default function WalletAnalyticsPage({
               </div>
 
               <div className="mt-8">
-                <Button
-                  onClick={() => setIsAutoCopyEnabled(!isAutoCopyEnabled)}
-                  className={`group relative h-14 w-full overflow-hidden rounded-2xl text-base font-semibold transition-all duration-300 ${
-                    isAutoCopyEnabled
-                      ? "bg-profit text-primary-foreground shadow-[0_0_30px_rgba(16,185,129,0.4)]"
-                      : "bg-gradient-to-r from-neon-purple to-neon-blue text-foreground hover:shadow-[0_0_30px_rgba(139,92,246,0.4)]"
-                  }`}
-                >
-                  <span className="relative z-10 flex items-center justify-center gap-2">
-                    <Zap
-                      className={`h-5 w-5 ${isAutoCopyEnabled ? "animate-pulse" : ""}`}
-                    />
-                    {isAutoCopyEnabled ? "自动跟单已开启" : "开启自动跟单"}
-                  </span>
-                  {!isAutoCopyEnabled && (
-                    <div className="absolute inset-0 bg-gradient-to-r from-neon-blue to-neon-purple opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-                  )}
-                </Button>
+                {analysis.followDecision ? (
+                  <GlassCard className="mb-4 flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="mb-2 flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-neon-blue" />
+                        <h3 className="text-sm font-semibold text-foreground">
+                          跟单判断
+                        </h3>
+                        <FollowDecisionBadge
+                          verdict={analysis.followDecision.verdict}
+                        />
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {analysis.followDecision.summary}
+                      </p>
+                      {analysis.metrics ? (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          当前交易覆盖率：{analysis.metrics.parsedTradeCoverageLabel}
+                          。这表示我们只在最近扫描的链上签名里，还原出了这部分明确的买卖。
+                        </p>
+                      ) : null}
+                    </div>
+                    <Button
+                      onClick={() => {
+                        setIsAutoCopyEnabled(true);
+                        router.push(
+                          `/copy-trading?mode=${analysis.mode}&source=${encodeURIComponent(
+                            analysis.address,
+                          )}&autostart=1`,
+                        );
+                      }}
+                      className={`group relative h-12 min-w-[180px] overflow-hidden rounded-2xl text-sm font-semibold transition-all duration-300 ${
+                        isAutoCopyEnabled
+                          ? "bg-profit text-primary-foreground shadow-[0_0_30px_rgba(16,185,129,0.4)]"
+                          : analysis.followDecision.verdict === "follow"
+                            ? "bg-gradient-to-r from-neon-purple to-neon-blue text-foreground hover:shadow-[0_0_30px_rgba(139,92,246,0.4)]"
+                            : "bg-secondary text-muted-foreground"
+                      }`}
+                    >
+                      <span className="relative z-10 flex items-center justify-center gap-2">
+                        <Zap
+                          className={`h-5 w-5 ${isAutoCopyEnabled ? "animate-pulse" : ""}`}
+                        />
+                        {isAutoCopyEnabled ? "跳转到跟单控制台" : "开启自动跟单"}
+                      </span>
+                      {!isAutoCopyEnabled &&
+                      analysis.followDecision.verdict === "follow" ? (
+                        <div className="absolute inset-0 bg-gradient-to-r from-neon-blue to-neon-purple opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                      ) : null}
+                    </Button>
+                  </GlassCard>
+                ) : null}
               </div>
             </>
           ) : null}
