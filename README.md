@@ -12,6 +12,20 @@ It helps users:
 
 Live demo: [https://copywhale-ai.vercel.app/](https://copywhale-ai.vercel.app/)
 
+### [🔗](https://www.attentionvc.ai/hackathon) Solana Agent Economy Hackathon: Agent Talent Show
+
+X: [Agent Talent Show](https://x.com/trendsdotfun/status/2037545575613428029?s=20)
+Submit: [AttentionVC](https://www.attentionvc.ai/hackathon)
+My X Article: [CopyWhale AI](https://x.com/DoggieKKKKKK/status/2039987901984088076?s=20)
+
+#### Track 1: Bitget Wallet
+
+- 💼 [Bitget Wallet](https://www.bitget.com/)：基于 Bitget 钱包技能开发 Solana 模因币 AI 交易代理
+
+#### Track 2: Covalent GoldRush
+
+- 🏆 [Covalent GoldRush](https://www.covalenthq.com/)：数据驱动的淘金热特工代理
+
 ## Background
 
 In Solana meme trading, the hardest part is rarely discovering tokens. The real challenge is figuring out:
@@ -27,24 +41,6 @@ Instead of stopping at wallet analytics, it connects:
 
 `wallet analysis -> AI judgment -> copy plan -> execution console -> wallet execution`
 
-## Hackathon Tracks
-
-### Track 1: Bitget Wallet
-
-CopyWhale AI uses Bitget Wallet for:
-
-- wallet connection,
-- transaction confirmation,
-- and real execution from the copy-trading console.
-
-### Premium / x402 direction
-
-The project also includes a lightweight premium endpoint:
-
-- `/api/premium/copy-plan?wallet=...`
-
-Unpaid requests return `402 Payment Required`, while paid demo requests unlock a premium copy plan. This demonstrates a simple x402-compatible premium intelligence flow for agent-facing APIs.
-
 ## Core Features
 
 ### 1. Wallet analysis
@@ -58,6 +54,7 @@ For a live Solana wallet, the app shows:
 - AI insight,
 - copy-trading verdict,
 - and risk-oriented follow settings.
+  ![alt text](image-4.png)
 
 ### 2. Smart wallet finder
 
@@ -72,10 +69,13 @@ The trading console supports:
 - on-chain execution summary,
 - execution feed,
 - and agent activity logs.
+  ![alt text](image-3.png)
 
 ### 4. Real execution
 
 Users can trigger a real test trade from eligible buy signals through Bitget Wallet.
+
+![alt text](image-2.png)
 
 ### 5. Premium copy-plan API
 
@@ -86,6 +86,8 @@ The premium endpoint returns:
 - recommended copy ratio,
 - stop loss / take profit suggestions,
 - and a signal snapshot.
+  ![alt text](image-5.png)
+  ![alt text](image-6.png)
 
 ## Tech Stack
 
@@ -108,6 +110,13 @@ The premium endpoint returns:
 - Covalent GoldRush
 - Helius Enhanced Transactions
 - Solana RPC fallback
+
+### Product
+
+- Wallet Analysis
+- Copy Decision Engine
+- Trading Console
+- Premium API
 
 ## Project Structure
 
@@ -187,21 +196,14 @@ Recommended environment variables for Vercel:
 - `SOLANA_RPC_URL`
 - `SOLANA_RPC_API_KEY` (only if your RPC provider needs it)
 
-## Demo Flow
+## 🎬 Demo
 
-Recommended demo sequence:
-
-1. Open the homepage in live mode
-2. Inspect a smart-money wallet
-3. Show AI insight and follow verdict
-4. Add the wallet into the follow pool
-5. Open the copy-trading console
-6. Show simulated positions and execution feed
-7. Trigger a real wallet execution
-8. Demonstrate the premium copy-plan endpoint
+<video src="./public/copy_35A5099F-793F-4DD7-B54D-31D90503C9A6.MOV" controls width="100%" max-width="800px">
+  Your browser does not support the video tag.
+</video>
 
 ## Links
 
 - GitHub: [https://github.com/doggiek/Solana-Agent-Economy-Hackathon_CopyWhale-AI](https://github.com/doggiek/Solana-Agent-Economy-Hackathon_CopyWhale-AI)
-- Demo: [https://copywhale-ai.vercel.app/](https://copywhale-ai.vercel.app/)
-- Premium API demo: [https://copywhale-ai.vercel.app/api/premium/copy-plan?wallet=2zWkRKi5Rw15Kjx9SxhMjPY7LQTfQyr9hQKuTCGSy2FE&demo_paid=1](https://copywhale-ai.vercel.app/api/premium/copy-plan?wallet=2zWkRKi5Rw15Kjx9SxhMjPY7LQTfQyr9hQKuTCGSy2FE&demo_paid=1)
+- Demo Playground: [https://copywhale-ai.vercel.app/](https://copywhale-ai.vercel.app/)
+- Premium API: `https://copywhale-ai.vercel.app/api/premium/copy-plan?wallet=xxx`
