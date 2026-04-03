@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { VersionedTransaction } from "@solana/web3.js";
 import { Button } from "@/components/ui/button";
 import { GlassCard } from "@/components/dashboard/glass-card";
 import { Wallet, X, Check, ExternalLink, Copy, LogOut } from "lucide-react";
@@ -26,6 +27,10 @@ interface WalletState {
 interface WalletContextType extends WalletState {
   connect: (type: WalletType) => Promise<boolean>;
   disconnect: () => void;
+  canExecuteSolanaTrades: boolean;
+  sendSolanaTransaction: (
+    serializedTransactionBase64: string,
+  ) => Promise<{ signature?: string; note?: string }>;
 }
 
 const WalletContext = createContext<WalletContextType | null>(null);
@@ -40,6 +45,12 @@ interface EvmProvider {
 
 interface SolanaProvider {
   connect: () => Promise<unknown>;
+  signAndSendTransaction?: (
+    transaction: VersionedTransaction,
+  ) => Promise<{ signature?: string } | string>;
+  signTransaction?: (
+    transaction: VersionedTransaction,
+  ) => Promise<VersionedTransaction>;
   publicKey?: { toString: () => string } | string;
   address?: string;
   account?: string;
@@ -48,6 +59,27 @@ interface SolanaProvider {
   isPhantom?: boolean;
   isBitKeep?: boolean;
   isBitget?: boolean;
+}
+
+function extractSolanaTransactionSignature(result: unknown) {
+  if (typeof result === "string") {
+    return result;
+  }
+
+  if (!result || typeof result !== "object") {
+    return "";
+  }
+
+  const record = result as Record<string, unknown>;
+  const direct =
+    record.signature ||
+    record.txid ||
+    record.txHash ||
+    record.hash ||
+    record.transactionSignature ||
+    record.result;
+
+  return typeof direct === "string" ? direct : "";
 }
 
 function formatWalletError(error: unknown) {
@@ -165,6 +197,51 @@ function extractSolanaAddress(response: unknown) {
   }
 
   return "";
+}
+
+function decodeBase64ToUint8Array(value: string) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes;
+}
+
+function encodeUint8ArrayToBase64(value: Uint8Array) {
+  let binary = "";
+
+  for (const byte of value) {
+    binary += String.fromCharCode(byte);
+  }
+
+  return btoa(binary);
+}
+
+function serializeSignedTransaction(
+  signedTransaction: VersionedTransaction | Uint8Array | ArrayBuffer | unknown,
+) {
+  if (
+    signedTransaction &&
+    typeof signedTransaction === "object" &&
+    "serialize" in signedTransaction &&
+    typeof (signedTransaction as { serialize: () => Uint8Array }).serialize ===
+      "function"
+  ) {
+    return (signedTransaction as { serialize: () => Uint8Array }).serialize();
+  }
+
+  if (signedTransaction instanceof Uint8Array) {
+    return signedTransaction;
+  }
+
+  if (signedTransaction instanceof ArrayBuffer) {
+    return new Uint8Array(signedTransaction);
+  }
+
+  throw new Error("钱包返回了无法广播的签名交易格式。");
 }
 
 export function useWallet() {
@@ -295,8 +372,91 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const sendSolanaTransaction = useCallback(
+    async (serializedTransactionBase64: string) => {
+      const provider =
+        state.walletType === "bitget"
+          ? getBitgetSolanaProvider()
+          : window.phantom?.solana || window.solana;
+
+      if (!provider || !state.isConnected) {
+        throw new Error("请先连接支持 Solana 的钱包。");
+      }
+
+      const transaction = VersionedTransaction.deserialize(
+        decodeBase64ToUint8Array(serializedTransactionBase64),
+      );
+
+      if (provider.signAndSendTransaction) {
+        try {
+          const result = await provider.signAndSendTransaction(transaction);
+          const signature = extractSolanaTransactionSignature(result);
+
+          if (!signature) {
+            console.warn(
+              "Wallet signAndSendTransaction completed without a parseable signature.",
+              result,
+            );
+            return {
+              signature: "",
+              note: "钱包已提交交易，但未返回可解析的签名。",
+            };
+          }
+
+          return { signature };
+        } catch (error) {
+          console.warn(
+            "Wallet signAndSendTransaction failed, falling back to signTransaction + broadcast.",
+            formatWalletError(error),
+          );
+        }
+      }
+
+      if (provider.signTransaction) {
+        const signedTransaction = await provider.signTransaction(transaction);
+        const signedBase64 = encodeUint8ArrayToBase64(
+          serializeSignedTransaction(signedTransaction),
+        );
+        const response = await fetch("/api/solana-broadcast", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            transaction: signedBase64,
+          }),
+        });
+        const json = (await response.json()) as {
+          signature?: string;
+          error?: string;
+        };
+
+        if (!response.ok || !json.signature) {
+          throw new Error(json.error || "广播签名交易失败。");
+        }
+
+        return { signature: json.signature };
+      }
+
+      throw new Error("当前钱包不支持发送 Solana 交易。");
+    },
+    [state.isConnected, state.walletType],
+  );
+
+  const canExecuteSolanaTrades =
+    state.isConnected &&
+    (state.walletType === "bitget" || state.walletType === "phantom");
+
   return (
-    <WalletContext.Provider value={{ ...state, connect, disconnect }}>
+    <WalletContext.Provider
+      value={{
+        ...state,
+        connect,
+        disconnect,
+        canExecuteSolanaTrades,
+        sendSolanaTransaction,
+      }}
+    >
       {children}
     </WalletContext.Provider>
   );
@@ -533,12 +693,11 @@ declare global {
       isBitKeep?: boolean;
       isBitget?: boolean;
       connect: () => Promise<{ publicKey: { toString: () => string } }>;
+      signAndSendTransaction?: SolanaProvider["signAndSendTransaction"];
+      signTransaction?: SolanaProvider["signTransaction"];
     };
     phantom?: {
-      solana?: {
-        isPhantom?: boolean;
-        connect: () => Promise<{ publicKey: { toString: () => string } }>;
-      };
+      solana?: SolanaProvider;
     };
     bitkeep?: {
       ethereum: EvmProvider;

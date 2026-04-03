@@ -5,6 +5,7 @@ export type AnalysisMode = "demo" | "live";
 export interface AnalysisListItem {
   id: string;
   token: string;
+  tokenMint?: string;
   tokenDetail?: string;
   action?: "buy" | "sell";
   statusLabel?: string;
@@ -157,6 +158,7 @@ interface SolanaRpcTransactionResponse {
 interface ParsedTrade {
   id: string;
   token: string;
+  tokenMint: string;
   tokenDetail?: string;
   action: "buy" | "sell";
   amount: string;
@@ -661,6 +663,7 @@ export async function getLiveWalletAnalysis(
   const tradeItems = recentTrades.map((trade) => ({
     id: trade.id,
     token: trade.token,
+    tokenMint: trade.tokenMint,
     tokenDetail: trade.tokenDetail,
     action: trade.action,
     amount: trade.amount,
@@ -1338,6 +1341,7 @@ function parseTrade(
   return {
     id: signature,
     token: formatTokenLabel(focus.symbol, focus.name, focus.mint),
+    tokenMint: focus.mint,
     tokenDetail: focus.name || focus.symbol,
     tokenSymbol: focus.symbol,
     action,
@@ -1433,6 +1437,7 @@ function parseHeliusSwapEvent(
   return {
     id: signature,
     token: formatTokenLabel(focus.symbol, focus.name, focus.mint),
+    tokenMint: focus.mint,
     tokenDetail: focus.name || focus.symbol,
     tokenSymbol: focus.symbol,
     action,
@@ -1521,6 +1526,7 @@ function parseHeliusTransferFallback(
   return {
     id: signature,
     token: formatTokenLabel(focus.symbol, focus.name, focus.mint),
+    tokenMint: focus.mint,
     tokenDetail: focus.name || focus.symbol,
     tokenSymbol: focus.symbol,
     action,

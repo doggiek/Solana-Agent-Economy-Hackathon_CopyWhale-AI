@@ -1,9 +1,8 @@
 import type { WalletAnalysis } from "@/lib/wallet-analysis";
 
 export const DEFAULT_CANDIDATE_ADDRESSES = [
-  "DX1XwE1PJViYZSthtKdwk5QhmZX5M6cyAqCfC1o5JGfJ",
+  "riDi6z4Lzch9FvcEzmkkx9gqCoPniMrTMFchbGaikGq",
   "BdhGYpj58ZcwXncCBCjcL1oaVemLcDNUaX9LqzwYcm6d",
-  "FFkKauDCfrJ1ADzNgWt3cdohxVfQvTtpW1QFFdJCy4FL",
   "JnXDPoZG4RPgnvNDyMfSi7HF1faGk3Mz4CZfwhDY8Wx",
 ];
 

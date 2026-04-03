@@ -660,6 +660,50 @@ export default function WalletAnalyticsPage({
                             查看交易面板
                           </Button>
                         </div>
+
+                        <div className="rounded-2xl border border-glass-border bg-secondary/20 p-4">
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-medium text-foreground">
+                                Premium / x402
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                付费解锁更完整的 premium copy plan，用于演示 agent 的可收费情报能力。
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-neon-blue/30 bg-neon-blue/10 px-2.5 py-1 text-[11px] font-medium text-neon-blue">
+                              x402 demo
+                            </span>
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-10 rounded-xl border-glass-border bg-transparent text-xs text-muted-foreground hover:border-neon-blue/40 hover:bg-neon-blue/10 hover:text-foreground"
+                              onClick={() => {
+                                const target = `/api/premium/copy-plan?wallet=${encodeURIComponent(
+                                  analysis.address,
+                                )}`;
+                                window.open(target, "_blank", "noopener,noreferrer");
+                              }}
+                            >
+                              查看 402 响应
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-10 rounded-xl border-glass-border bg-transparent text-xs text-muted-foreground hover:border-neon-purple/40 hover:bg-neon-purple/10 hover:text-foreground"
+                              onClick={() => {
+                                const target = `/api/premium/copy-plan?wallet=${encodeURIComponent(
+                                  analysis.address,
+                                )}&demo_paid=1`;
+                                window.open(target, "_blank", "noopener,noreferrer");
+                              }}
+                            >
+                              演示已支付结果
+                            </Button>
+                          </div>
+                        </div>
                       </div>
                     </GlassCard>
                   ) : null}

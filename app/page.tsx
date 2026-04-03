@@ -196,9 +196,9 @@ export default function LandingPage() {
 
             {/* Example Wallets */}
             <div className="mt-5">
-              <p className="mb-3 text-center text-sm text-muted-foreground">
+              {/* <p className="mb-3 text-center text-sm text-muted-foreground">
                 试试这些热门钱包
-              </p>
+              </p> */}
               <div className="flex flex-wrap justify-center gap-2">
                 {exampleWallets.map((wallet) => (
                   <button

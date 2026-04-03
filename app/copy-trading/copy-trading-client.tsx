@@ -13,9 +13,15 @@ import {
   Activity,
   ChevronRight,
   Loader2,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConnectButton, useWallet } from "@/components/wallet/wallet-connect";
+import {
+  Tooltip as UITooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { WalletAnalysis } from "@/lib/wallet-analysis";
@@ -136,18 +142,23 @@ const activityLog = [
 ];
 
 const LIVE_WATCHLIST_STORAGE_KEY = "copywhale-live-watchlist";
+const LIVE_REAL_EXECUTION_STORAGE_KEY = "copywhale-live-real-execution";
+const WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112";
+const REAL_EXECUTION_TEST_SOL = 0.001;
+const SOL_USD_REFERENCE = 140;
 
 interface LiveTradeSignal {
   id: string;
   source: string;
   sourceShort: string;
   token: string;
+  tokenMint?: string;
+  tokenDetail?: string;
   action: "buy" | "sell";
   amount: string;
   valueUsd: number;
   timestamp: string;
   color: string;
-  tokenDetail?: string;
 }
 
 interface LiveActivityItem {
@@ -176,6 +187,7 @@ interface SimulatedPosition {
   source: string;
   sourceShort: string;
   token: string;
+  tokenDetail?: string;
   color: string;
   quantity: number;
   costUsd: number;
@@ -188,6 +200,8 @@ interface SimulatedTradeRecord {
   source: string;
   sourceLabel: string;
   token: string;
+  tokenMint?: string;
+  tokenDetail?: string;
   action: "buy" | "sell";
   amount: string;
   copiedUsd: number;
@@ -195,6 +209,31 @@ interface SimulatedTradeRecord {
   timestamp: string;
   color: string;
   status: "executed" | "skipped" | "open";
+  skipReason?: string;
+}
+
+interface RealExecutionState {
+  status: "idle" | "preparing" | "awaiting_wallet" | "submitted" | "failed";
+  signature?: string;
+  error?: string;
+  note?: string;
+  solAmount?: number;
+  token?: string;
+  tokenDetail?: string;
+  sourceLabel?: string;
+  createdAt?: string;
+}
+
+interface RealExecutionPosition {
+  key: string;
+  token: string;
+  tokenDetail?: string;
+  sourceLabel?: string;
+  costUsd: number;
+  currentValueUsd: number;
+  pnlUsd: number;
+  pnlPct: number;
+  executions: number;
 }
 
 function shortenAddress(address: string) {
@@ -247,6 +286,7 @@ function buildLiveSignals(analyses: WalletAnalysis[]) {
         source: analysis.address,
         sourceShort: shortenAddress(analysis.address),
         token: item.token,
+        tokenMint: item.tokenMint,
         tokenDetail: item.tokenDetail,
         action: item.action,
         amount: item.amount,
@@ -284,7 +324,7 @@ function buildSimulatedPortfolio(
     const quantity = parseCompactAmount(signal.amount) * ratio;
     const key = `${signal.source}:${signal.token}`;
     const current = openPositions.get(key);
-    const isMemeCandidate = signal.token !== "SOL";
+    const isMemeCandidate = isFollowableToken(signal.token);
     const isSourcePaused = options.pausedSources.has(signal.source);
 
     if (signal.action === "buy") {
@@ -309,6 +349,22 @@ function buildSimulatedPortfolio(
       }
 
       if (!isMemeCandidate) {
+        history.push({
+          id: signal.id,
+          source: signal.source,
+          sourceLabel,
+          token: signal.token,
+          tokenMint: signal.tokenMint,
+          tokenDetail: signal.tokenDetail,
+          action: signal.action,
+          amount: signal.amount,
+          copiedUsd,
+          profit: null,
+          timestamp: signal.timestamp,
+          color: signal.color,
+          status: "skipped",
+          skipReason: "当前策略只跟可识别的 meme token，主流币/稳定币信号已跳过。",
+        });
         activity.push({
           id: `${signal.id}-skip-non-meme`,
           message: `跳过 ${sourceLabel} 的 ${signal.token} 买入信号，当前策略只跟 meme buy`,
@@ -319,6 +375,22 @@ function buildSimulatedPortfolio(
       }
 
       if (copiedUsd > options.maxPositionUsd) {
+        history.push({
+          id: signal.id,
+          source: signal.source,
+          sourceLabel,
+          token: signal.token,
+          tokenMint: signal.tokenMint,
+          tokenDetail: signal.tokenDetail,
+          action: signal.action,
+          amount: signal.amount,
+          copiedUsd,
+          profit: null,
+          timestamp: signal.timestamp,
+          color: signal.color,
+          status: "skipped",
+          skipReason: `超出单币仓位上限 $${options.maxPositionUsd}，本次信号已跳过。`,
+        });
         activity.push({
           id: `${signal.id}-cap`,
           message: `跳过 ${sourceLabel} 的 ${signal.token} 买入信号，超出单币仓位上限 $${options.maxPositionUsd}`,
@@ -333,6 +405,7 @@ function buildSimulatedPortfolio(
         source: signal.source,
         sourceShort: signal.sourceShort,
         token: signal.token,
+        tokenDetail: signal.tokenDetail,
         color: signal.color,
         quantity: 0,
         costUsd: 0,
@@ -349,6 +422,8 @@ function buildSimulatedPortfolio(
         id: signal.id,
         source: signal.source,
         token: signal.token,
+        tokenMint: signal.tokenMint,
+        tokenDetail: signal.tokenDetail,
         action: signal.action,
         amount: signal.amount,
         timestamp: signal.timestamp,
@@ -372,6 +447,8 @@ function buildSimulatedPortfolio(
         id: signal.id,
         source: signal.source,
         token: signal.token,
+        tokenMint: signal.tokenMint,
+        tokenDetail: signal.tokenDetail,
         action: signal.action,
         amount: signal.amount,
         timestamp: signal.timestamp,
@@ -380,6 +457,7 @@ function buildSimulatedPortfolio(
         profit: null,
         sourceLabel,
         status: "skipped",
+        skipReason: "该地址任务当前已暂停，卖出信号仅记录不执行。",
       });
       activity.push({
         id: `${signal.id}-task-paused-sell`,
@@ -410,6 +488,8 @@ function buildSimulatedPortfolio(
         id: signal.id,
         source: signal.source,
         token: signal.token,
+        tokenMint: signal.tokenMint,
+        tokenDetail: signal.tokenDetail,
         action: signal.action,
         amount: signal.amount,
         timestamp: signal.timestamp,
@@ -430,6 +510,7 @@ function buildSimulatedPortfolio(
         id: signal.id,
         source: signal.source,
         token: signal.token,
+        tokenDetail: signal.tokenDetail,
         action: signal.action,
         amount: signal.amount,
         timestamp: signal.timestamp,
@@ -438,6 +519,7 @@ function buildSimulatedPortfolio(
         profit: null,
         sourceLabel,
         status: "skipped",
+        skipReason: "当前没有对应模拟仓位，这笔卖出信号已跳过。",
       });
       activity.push({
         id: `${signal.id}-warning`,
@@ -448,7 +530,8 @@ function buildSimulatedPortfolio(
     }
 
     if (current && current.quantity > 0 && current.costUsd > 0) {
-      const pnlPct = ((current.lastMarkUsd - current.costUsd) / current.costUsd) * 100;
+      const pnlPct =
+        ((current.lastMarkUsd - current.costUsd) / current.costUsd) * 100;
 
       if (pnlPct <= -options.stopLossPct) {
         activity.push({
@@ -475,8 +558,8 @@ function buildSimulatedPortfolio(
   }
 
   return {
-    history: history.reverse().slice(0, 18),
-    activity: activity.reverse().slice(0, 18),
+    history: history.reverse(),
+    activity: activity.reverse().slice(0, 24),
     openPositions: Array.from(openPositions.values()),
     realizedProfit: Number(realizedProfit.toFixed(2)),
   };
@@ -501,7 +584,8 @@ function buildFollowTasks(
     const realizedProfitUsd = simulatedPortfolio.history
       .filter(
         (record) =>
-          record.source === analysis.address && typeof record.profit === "number",
+          record.source === analysis.address &&
+          typeof record.profit === "number",
       )
       .reduce((sum, record) => sum + (record.profit || 0), 0);
     const openPositions = simulatedPortfolio.openPositions.filter(
@@ -514,7 +598,8 @@ function buildFollowTasks(
       status: options.isAutoCopyEnabled && !isPaused ? "running" : "paused",
       riskLevel: options.riskLevel,
       copyPercentage: options.copyPercentage,
-      signalCount: analysis.metrics?.recentTradeCount ?? analysis.listItems.length,
+      signalCount:
+        analysis.metrics?.recentTradeCount ?? analysis.listItems.length,
       latestSignalLabel: latestItem
         ? `${latestItem.action === "buy" ? "买入" : latestItem.action === "sell" ? "卖出" : "观察"} ${latestItem.token}`
         : "等待实时信号",
@@ -526,12 +611,16 @@ function buildFollowTasks(
 }
 
 function TokenIcon({ token, color }: { token: string; color: string }) {
+  const letters = token
+    .replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, "")
+    .slice(0, 2)
+    .toUpperCase();
   return (
     <div
       className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-foreground"
       style={{ backgroundColor: `${color}20`, color }}
     >
-      {token.slice(0, 2)}
+      {letters || token.slice(0, 2)}
     </div>
   );
 }
@@ -554,6 +643,80 @@ function ActivityIcon({ type }: { type: string }) {
 function formatUsd(value: number) {
   const sign = value > 0 ? "+" : "";
   return `${sign}$${value.toFixed(2)}`;
+}
+
+function getDisplayTokenName(token: string, tokenDetail?: string) {
+  if (!tokenDetail) {
+    return token;
+  }
+
+  const normalizedDetail = tokenDetail.trim();
+  if (!normalizedDetail) {
+    return token;
+  }
+
+  const looksLikeAddress =
+    normalizedDetail.length > 18 && !normalizedDetail.includes(" ");
+  return looksLikeAddress ? token : normalizedDetail;
+}
+
+function getSecondaryTokenLabel(token: string, tokenDetail?: string) {
+  const displayName = getDisplayTokenName(token, tokenDetail);
+  return displayName !== token ? token : "";
+}
+
+function isFollowableToken(token: string) {
+  const normalized = token.trim().toUpperCase();
+
+  if (
+    normalized === "SOL" ||
+    normalized === "WSOL" ||
+    normalized.startsWith("SO11") ||
+    normalized.includes("STAKED SOL") ||
+    normalized.includes("JITO STAKED SOL") ||
+    normalized.startsWith("USDC") ||
+    normalized.startsWith("USDT") ||
+    normalized.startsWith("USDS")
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function getExecutionStatusLabel(
+  trade: SimulatedTradeRecord,
+  mode: "live" | "demo",
+) {
+  if (mode !== "live") {
+    return trade.profit !== null ? "已完成" : "持仓中";
+  }
+
+  if (trade.status === "skipped") {
+    return "已跳过";
+  }
+
+  if (trade.status === "executed") {
+    return "已执行";
+  }
+
+  return trade.action === "buy" ? "待执行" : "待卖出";
+}
+
+function getRiskSlippageBps(riskLevel: "low" | "medium" | "high") {
+  if (riskLevel === "low") {
+    return 300;
+  }
+
+  if (riskLevel === "high") {
+    return 900;
+  }
+
+  return 500;
+}
+
+function formatSolAmount(value: number) {
+  return `${value.toFixed(3)} SOL`;
 }
 
 export default function CopyTradingPage() {
@@ -580,11 +743,22 @@ export default function CopyTradingPage() {
   const [pausedSources, setPausedSources] = useState<string[]>([]);
   const [selectedSourceFilter, setSelectedSourceFilter] = useState("all");
   const [selectedTokenFilter, setSelectedTokenFilter] = useState("all");
+  const [selectedActionFilter, setSelectedActionFilter] = useState<
+    "all" | "buy" | "sell"
+  >("all");
   const [positionSortBy, setPositionSortBy] = useState<
     "value_desc" | "source_asc" | "token_asc"
   >("value_desc");
   const [closedPositionKeys, setClosedPositionKeys] = useState<string[]>([]);
-  const { isConnected } = useWallet();
+  const [realExecutionStates, setRealExecutionStates] = useState<
+    Record<string, RealExecutionState>
+  >({});
+  const {
+    isConnected,
+    address,
+    canExecuteSolanaTrades,
+    sendSolanaTransaction,
+  } = useWallet();
   const [liveAnalyses, setLiveAnalyses] = useState<WalletAnalysis[]>([]);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [isLiveLoading, setIsLiveLoading] = useState(mode === "live");
@@ -604,6 +778,19 @@ export default function CopyTradingPage() {
   useEffect(() => {
     setRiskLevel(normalizedRisk);
   }, [normalizedRisk, sourceAddress, mode]);
+
+  useEffect(() => {
+    if (mode !== "live") {
+      return;
+    }
+
+    if (sourceAddress) {
+      setSelectedSourceFilter(shortenAddress(sourceAddress));
+      return;
+    }
+
+    setSelectedSourceFilter("all");
+  }, [mode, sourceAddress]);
 
   useEffect(() => {
     if (!hasMounted || mode !== "live") {
@@ -637,8 +824,44 @@ export default function CopyTradingPage() {
   }, [hasMounted, mode, watchlistInput]);
 
   useEffect(() => {
+    if (!hasMounted || mode !== "live") {
+      return;
+    }
+
+    const storedExecutionState =
+      window.localStorage.getItem(LIVE_REAL_EXECUTION_STORAGE_KEY);
+
+    if (!storedExecutionState) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(storedExecutionState) as Record<
+        string,
+        RealExecutionState
+      >;
+      setRealExecutionStates(parsed);
+    } catch {
+      window.localStorage.removeItem(LIVE_REAL_EXECUTION_STORAGE_KEY);
+    }
+  }, [hasMounted, mode]);
+
+  useEffect(() => {
+    if (!hasMounted || mode !== "live") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      LIVE_REAL_EXECUTION_STORAGE_KEY,
+      JSON.stringify(realExecutionStates),
+    );
+  }, [hasMounted, mode, realExecutionStates]);
+
+  useEffect(() => {
     setPausedSources((current) =>
-      current.filter((source) => parseSourceAddresses(watchlistInput).includes(source)),
+      current.filter((source) =>
+        parseSourceAddresses(watchlistInput).includes(source),
+      ),
     );
   }, [watchlistInput]);
 
@@ -692,7 +915,9 @@ export default function CopyTradingPage() {
       } catch (error) {
         if (!cancelled) {
           setLiveError(
-            error instanceof Error ? error.message : "Failed to load live copy-trading data.",
+            error instanceof Error
+              ? error.message
+              : "Failed to load live copy-trading data.",
           );
         }
       } finally {
@@ -721,8 +946,7 @@ export default function CopyTradingPage() {
     return `${sourceAddresses.length} 个地址`;
   }, [mode, sourceAddresses]);
 
-  const panelTitle =
-    mode === "live" ? "跟单任务池" : "Demo 跟单控制";
+  const panelTitle = mode === "live" ? "跟单任务池" : "Demo 跟单控制";
   const panelSubtitle =
     mode === "live"
       ? "这里展示当前会话里正在跟踪的 smart money 地址池与任务运行状态。"
@@ -731,17 +955,28 @@ export default function CopyTradingPage() {
     () => buildLiveSignals(liveAnalyses),
     [liveAnalyses],
   );
-  const pausedSourceSet = useMemo(() => new Set(pausedSources), [pausedSources]);
+  const pausedSourceSet = useMemo(
+    () => new Set(pausedSources),
+    [pausedSources],
+  );
   const simulatedPortfolio = useMemo(
     () =>
       buildSimulatedPortfolio(liveSignals, copyPercentage[0], {
         isAutoCopyEnabled,
-        maxPositionUsd: riskLevel === "low" ? 30 : riskLevel === "medium" ? 75 : 150,
+        maxPositionUsd:
+          riskLevel === "low" ? 30 : riskLevel === "medium" ? 75 : 150,
         stopLossPct: riskLevel === "low" ? 4 : riskLevel === "medium" ? 6 : 10,
-        takeProfitPct: riskLevel === "low" ? 8 : riskLevel === "medium" ? 12 : 18,
+        takeProfitPct:
+          riskLevel === "low" ? 8 : riskLevel === "medium" ? 12 : 18,
         pausedSources: pausedSourceSet,
       }),
-    [copyPercentage, isAutoCopyEnabled, liveSignals, pausedSourceSet, riskLevel],
+    [
+      copyPercentage,
+      isAutoCopyEnabled,
+      liveSignals,
+      pausedSourceSet,
+      riskLevel,
+    ],
   );
   const followTasks = useMemo(
     () =>
@@ -786,38 +1021,146 @@ export default function CopyTradingPage() {
           ).length,
         };
   const resolvedTradeHistory =
-    mode === "live"
-      ? simulatedPortfolio.history
-      : tradeHistory;
+    mode === "live" ? simulatedPortfolio.history : tradeHistory;
   const executionSourceOptions = useMemo(() => {
     if (mode !== "live") {
       return [];
     }
 
-    return Array.from(
-      new Set(resolvedTradeHistory.map((trade) => trade.sourceLabel)),
-    );
-  }, [mode, resolvedTradeHistory]);
+    return followTasks.map((task) => task.sourceShort);
+  }, [followTasks, mode]);
   const executionTokenOptions = useMemo(() => {
     if (mode !== "live") {
       return [];
     }
 
-    return Array.from(new Set(resolvedTradeHistory.map((trade) => trade.token)));
+    return Array.from(
+      new Set(resolvedTradeHistory.map((trade) => trade.token)),
+    );
   }, [mode, resolvedTradeHistory]);
   const filteredTradeHistory = useMemo(() => {
     if (mode !== "live") {
-      return resolvedTradeHistory;
+      return resolvedTradeHistory.slice(0, 18);
     }
 
-    return resolvedTradeHistory.filter((trade) => {
-      const sourceMatches =
-        selectedSourceFilter === "all" || trade.sourceLabel === selectedSourceFilter;
-      const tokenMatches =
-        selectedTokenFilter === "all" || trade.token === selectedTokenFilter;
-      return sourceMatches && tokenMatches;
-    });
-  }, [mode, resolvedTradeHistory, selectedSourceFilter, selectedTokenFilter]);
+    return resolvedTradeHistory
+      .filter((trade) => {
+        const sourceMatches =
+          selectedSourceFilter === "all" ||
+          trade.sourceLabel === selectedSourceFilter;
+        const tokenMatches =
+          selectedTokenFilter === "all" || trade.token === selectedTokenFilter;
+        const actionMatches =
+          selectedActionFilter === "all" ||
+          trade.action === selectedActionFilter;
+        return sourceMatches && tokenMatches && actionMatches;
+      })
+      .slice(0, 18);
+  }, [
+    mode,
+    resolvedTradeHistory,
+    selectedActionFilter,
+    selectedSourceFilter,
+    selectedTokenFilter,
+  ]);
+  const realExecutionSummary = useMemo(() => {
+    const entries = Object.entries(realExecutionStates).filter(
+      ([, state]) => state.status === "submitted",
+    );
+    const latest = entries[0];
+
+    return {
+      count: entries.length,
+      latestSignature: latest?.[1].signature || "",
+      pendingWithoutSignature: entries.filter(
+        ([, state]) => state.status === "submitted" && !state.signature,
+      ).length,
+      totalSolAmount: entries.reduce(
+        (sum, [, state]) => sum + (state.solAmount || 0),
+        0,
+      ),
+      submittedTokens: Array.from(
+        new Set(entries.map(([, state]) => state.token).filter(Boolean)),
+      ),
+    };
+  }, [realExecutionStates]);
+  const realExecutionPositions = useMemo(() => {
+    const submittedEntries = Object.entries(realExecutionStates).filter(
+      ([, state]) => state.status === "submitted" && state.token && state.solAmount,
+    );
+    const grouped = new Map<string, RealExecutionPosition>();
+
+    for (const [, state] of submittedEntries) {
+      const token = state.token || "Unknown";
+      const key = `${state.sourceLabel || "wallet"}:${token}`;
+      const baseUsd = (state.solAmount || 0) * SOL_USD_REFERENCE;
+      const latestTrade = resolvedTradeHistory.find(
+        (trade) =>
+          trade.token === token &&
+          (!state.sourceLabel || trade.sourceLabel === state.sourceLabel),
+      );
+      const markMultiplier =
+        latestTrade?.action === "sell"
+          ? 0.96
+          : latestTrade?.action === "buy"
+            ? 1.04
+            : 1;
+      const currentUsd = Number((baseUsd * markMultiplier).toFixed(2));
+      const existing = grouped.get(key);
+
+      if (existing) {
+        existing.costUsd = Number((existing.costUsd + baseUsd).toFixed(2));
+        existing.currentValueUsd = Number(
+          (existing.currentValueUsd + currentUsd).toFixed(2),
+        );
+        existing.executions += 1;
+        existing.pnlUsd = Number(
+          (existing.currentValueUsd - existing.costUsd).toFixed(2),
+        );
+        existing.pnlPct =
+          existing.costUsd > 0
+            ? Number(((existing.pnlUsd / existing.costUsd) * 100).toFixed(2))
+            : 0;
+        grouped.set(key, existing);
+        continue;
+      }
+
+      grouped.set(key, {
+        key,
+        token,
+        tokenDetail: state.tokenDetail,
+        sourceLabel: state.sourceLabel,
+        costUsd: Number(baseUsd.toFixed(2)),
+        currentValueUsd: currentUsd,
+        pnlUsd: Number((currentUsd - baseUsd).toFixed(2)),
+        pnlPct:
+          baseUsd > 0
+            ? Number((((currentUsd - baseUsd) / baseUsd) * 100).toFixed(2))
+            : 0,
+        executions: 1,
+      });
+    }
+
+    return Array.from(grouped.values()).sort(
+      (a, b) => b.currentValueUsd - a.currentValueUsd,
+    );
+  }, [realExecutionStates, resolvedTradeHistory]);
+  const realExecutionProfitSummary = useMemo(() => {
+    const totalPnlUsd = realExecutionPositions.reduce(
+      (sum, position) => sum + position.pnlUsd,
+      0,
+    );
+    const totalCurrentUsd = realExecutionPositions.reduce(
+      (sum, position) => sum + position.currentValueUsd,
+      0,
+    );
+
+    return {
+      positions: realExecutionPositions.length,
+      totalPnlUsd: Number(totalPnlUsd.toFixed(2)),
+      totalCurrentUsd: Number(totalCurrentUsd.toFixed(2)),
+    };
+  }, [realExecutionPositions]);
   const resolvedActivityLog =
     mode === "live"
       ? [
@@ -878,6 +1221,125 @@ export default function CopyTradingPage() {
     setClosedPositionKeys((current) =>
       current.includes(positionKey) ? current : [...current, positionKey],
     );
+  };
+
+  const handleExecuteRealTrade = async (trade: SimulatedTradeRecord) => {
+    if (!trade.tokenMint || trade.tokenMint === WRAPPED_SOL_MINT) {
+      setRealExecutionStates((current) => ({
+        ...current,
+        [trade.id]: {
+          status: "failed",
+          error: "当前信号缺少可执行 token mint，暂时无法真实下单。",
+        },
+      }));
+      return;
+    }
+
+    if (!canExecuteSolanaTrades || !address) {
+      setRealExecutionStates((current) => ({
+        ...current,
+        [trade.id]: {
+          status: "failed",
+          error: "请先连接 Bitget Wallet 或 Phantom 钱包。",
+        },
+      }));
+      return;
+    }
+
+    if (trade.action !== "buy") {
+      setRealExecutionStates((current) => ({
+        ...current,
+        [trade.id]: {
+          status: "failed",
+          error: "今天先支持真实买入执行，真实卖出稍后补上。",
+        },
+      }));
+      return;
+    }
+
+    const mirroredSolAmount = trade.copiedUsd / SOL_USD_REFERENCE;
+    const solToSpend = Math.min(
+      REAL_EXECUTION_TEST_SOL,
+      Math.max(mirroredSolAmount, 0.0001),
+    );
+    const estimatedSolInput = Math.floor(solToSpend * 1_000_000_000);
+
+    try {
+      setRealExecutionStates((current) => ({
+        ...current,
+        [trade.id]: {
+          status: "preparing",
+          solAmount: solToSpend,
+          token: trade.token,
+          tokenDetail: trade.tokenDetail,
+          sourceLabel: trade.sourceLabel,
+          createdAt: trade.timestamp,
+        },
+      }));
+
+      const prepareResponse = await fetch("/api/solana-swap", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          inputMint: WRAPPED_SOL_MINT,
+          outputMint: trade.tokenMint,
+          amount: estimatedSolInput,
+          userPublicKey: address,
+          slippageBps: getRiskSlippageBps(riskLevel),
+        }),
+      });
+      const prepareJson = (await prepareResponse.json()) as {
+        swapTransaction?: string;
+        error?: string;
+      };
+
+      if (!prepareResponse.ok || !prepareJson.swapTransaction) {
+        throw new Error(prepareJson.error || "准备真实 swap 交易失败。");
+      }
+
+      setRealExecutionStates((current) => ({
+        ...current,
+        [trade.id]: {
+          status: "awaiting_wallet",
+          solAmount: solToSpend,
+          token: trade.token,
+          tokenDetail: trade.tokenDetail,
+          sourceLabel: trade.sourceLabel,
+          createdAt: trade.timestamp,
+        },
+      }));
+
+      const result = await sendSolanaTransaction(prepareJson.swapTransaction);
+
+      setRealExecutionStates((current) => ({
+        ...current,
+        [trade.id]: {
+          status: "submitted",
+          signature: result.signature,
+          note: result.note,
+          solAmount: solToSpend,
+          token: trade.token,
+          tokenDetail: trade.tokenDetail,
+          sourceLabel: trade.sourceLabel,
+          createdAt: trade.timestamp,
+        },
+      }));
+    } catch (error) {
+      setRealExecutionStates((current) => ({
+        ...current,
+        [trade.id]: {
+          status: "failed",
+          error: error instanceof Error ? error.message : "真实交易执行失败。",
+          solAmount: solToSpend,
+          token: trade.token,
+          tokenDetail: trade.tokenDetail,
+          sourceLabel: trade.sourceLabel,
+          createdAt: trade.timestamp,
+        },
+      }));
+    }
   };
 
   if (!hasMounted) {
@@ -956,7 +1418,9 @@ export default function CopyTradingPage() {
                   >
                     <span
                       className={`h-2 w-2 rounded-full ${
-                        isAutoCopyEnabled ? "animate-pulse bg-profit" : "bg-loss"
+                        isAutoCopyEnabled
+                          ? "animate-pulse bg-profit"
+                          : "bg-loss"
                       }`}
                     />
                     {isAutoCopyEnabled ? "运行中" : "已停止"}
@@ -988,7 +1452,9 @@ export default function CopyTradingPage() {
 
           {mode === "live" && liveError ? (
             <GlassCard className="mb-6 p-5">
-              <p className="text-base font-semibold text-loss">Live 数据加载失败</p>
+              <p className="text-base font-semibold text-loss">
+                Live 数据加载失败
+              </p>
               <p className="mt-2 text-sm text-muted-foreground">{liveError}</p>
             </GlassCard>
           ) : null}
@@ -1101,7 +1567,9 @@ export default function CopyTradingPage() {
                           {sourceAddresses.length} 个地址正在跟踪
                         </span>
                         <button
-                          onClick={() => setIsAutoCopyEnabled(!isAutoCopyEnabled)}
+                          onClick={() =>
+                            setIsAutoCopyEnabled(!isAutoCopyEnabled)
+                          }
                           className={`relative h-7 w-14 rounded-full transition-all duration-300 ${
                             isAutoCopyEnabled
                               ? "bg-gradient-to-r from-neon-purple to-neon-blue shadow-[0_0_15px_rgba(139,92,246,0.4)]"
@@ -1145,7 +1613,8 @@ export default function CopyTradingPage() {
                                 </span>
                               </div>
                               <p className="mt-1 text-sm text-muted-foreground">
-                                {task.latestSignalLabel} · {task.latestSignalTimestamp}
+                                {task.latestSignalLabel} ·{" "}
+                                {task.latestSignalTimestamp}
                               </p>
                             </div>
                             <div className="grid grid-cols-2 gap-3 text-center text-xs text-muted-foreground sm:min-w-[220px]">
@@ -1192,7 +1661,8 @@ export default function CopyTradingPage() {
                         ))
                       ) : (
                         <div className="rounded-xl border border-dashed border-glass-border bg-secondary/20 p-6 text-center text-sm text-muted-foreground">
-                          还没有 live 跟单任务。输入 smart money 地址后，这里会出现运行中的任务卡。
+                          还没有 live 跟单任务。输入 smart money
+                          地址后，这里会出现运行中的任务卡。
                         </div>
                       )}
                     </div>
@@ -1202,14 +1672,14 @@ export default function CopyTradingPage() {
                     <div className="mb-4 flex items-center justify-between">
                       <div>
                         <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-neon-purple">
-                          Portfolio
+                          Simulation
                         </p>
                         <h2 className="text-lg font-semibold text-foreground">
-                          当前持仓
+                          当前模拟持仓
                         </h2>
                       </div>
                       <span className="text-sm text-muted-foreground">
-                        当前模拟仓位与浮盈亏
+                        这里只展示策略模拟出来的仓位，不代表钱包真实链上资产
                       </span>
                     </div>
                     <div className="mb-4 grid gap-4 sm:grid-cols-3">
@@ -1217,38 +1687,67 @@ export default function CopyTradingPage() {
                         <p className="text-2xl font-bold text-profit">
                           ${resolvedStats.totalProfit.toFixed(2)}
                         </p>
-                        <p className="text-xs text-muted-foreground">模拟已实现收益</p>
+                        <p className="text-xs text-muted-foreground">
+                          模拟已实现收益
+                        </p>
                       </div>
                       <div className="rounded-xl border border-glass-border bg-secondary/30 p-4">
                         <p className="text-2xl font-bold text-foreground">
                           {copyPercentage[0]}%
                         </p>
-                        <p className="text-xs text-muted-foreground">当前跟单比例</p>
+                        <p className="text-xs text-muted-foreground">
+                          当前跟单比例
+                        </p>
                       </div>
                       <div className="rounded-xl border border-glass-border bg-secondary/30 p-4">
                         <p className="text-2xl font-bold text-neon-purple">
                           {visibleOpenPositions.length}
                         </p>
-                        <p className="text-xs text-muted-foreground">当前模拟持仓</p>
+                        <p className="text-xs text-muted-foreground">
+                          当前模拟持仓
+                        </p>
                       </div>
                     </div>
                     <div className="mb-4 grid gap-3 sm:grid-cols-3">
                       <div className="rounded-xl border border-glass-border bg-secondary/20 p-3">
-                        <p className="text-sm font-medium text-foreground">单币仓位上限</p>
+                        <p className="text-sm font-medium text-foreground">
+                          单币仓位上限
+                        </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          ${riskLevel === "low" ? 30 : riskLevel === "medium" ? 75 : 150}
+                          $
+                          {riskLevel === "low"
+                            ? 30
+                            : riskLevel === "medium"
+                              ? 75
+                              : 150}
                         </p>
                       </div>
                       <div className="rounded-xl border border-glass-border bg-secondary/20 p-3">
-                        <p className="text-sm font-medium text-foreground">模拟止损</p>
+                        <p className="text-sm font-medium text-foreground">
+                          模拟止损
+                        </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          -{riskLevel === "low" ? 4 : riskLevel === "medium" ? 6 : 10}%
+                          -
+                          {riskLevel === "low"
+                            ? 4
+                            : riskLevel === "medium"
+                              ? 6
+                              : 10}
+                          %
                         </p>
                       </div>
                       <div className="rounded-xl border border-glass-border bg-secondary/20 p-3">
-                        <p className="text-sm font-medium text-foreground">模拟止盈</p>
+                        <p className="text-sm font-medium text-foreground">
+                          模拟止盈
+                        </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          +{riskLevel === "low" ? 8 : riskLevel === "medium" ? 12 : 18}%
+                          +
+                          {riskLevel === "low"
+                            ? 8
+                            : riskLevel === "medium"
+                              ? 12
+                              : 18}
+                          %
                         </p>
                       </div>
                     </div>
@@ -1257,7 +1756,10 @@ export default function CopyTradingPage() {
                         value={positionSortBy}
                         onChange={(event) =>
                           setPositionSortBy(
-                            event.target.value as "value_desc" | "source_asc" | "token_asc",
+                            event.target.value as
+                              | "value_desc"
+                              | "source_asc"
+                              | "token_asc",
                           )
                         }
                         className="rounded-xl border border-glass-border bg-secondary/30 px-3 py-2 text-sm text-foreground outline-none focus:border-neon-purple/50"
@@ -1282,34 +1784,63 @@ export default function CopyTradingPage() {
                               className="flex items-center justify-between rounded-xl border border-glass-border bg-secondary/20 p-4"
                             >
                               <div className="flex items-center gap-3">
-                                <TokenIcon token={position.token} color={position.color} />
+                                <TokenIcon
+                                  token={getDisplayTokenName(
+                                    position.token,
+                                    position.tokenDetail,
+                                  )}
+                                  color={position.color}
+                                />
                                 <div>
                                   <p className="font-medium text-foreground">
-                                    {position.token}
+                                    {getDisplayTokenName(
+                                      position.token,
+                                      position.tokenDetail,
+                                    )}
                                   </p>
                                   <p className="text-sm text-muted-foreground">
-                                    来源 {position.sourceShort} · 持仓 {position.quantity.toFixed(2)}
+                                    来源 {position.sourceShort} · 持仓{" "}
+                                    {position.quantity.toFixed(2)}
                                   </p>
+                                  {getSecondaryTokenLabel(
+                                    position.token,
+                                    position.tokenDetail,
+                                  ) ? (
+                                    <p className="text-xs text-muted-foreground">
+                                      {getSecondaryTokenLabel(
+                                        position.token,
+                                        position.tokenDetail,
+                                      )}
+                                    </p>
+                                  ) : null}
                                 </div>
                               </div>
                               <div className="grid grid-cols-3 gap-4 text-right text-sm">
                                 <div>
-                                  <p className="text-xs text-muted-foreground">成本</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    成本
+                                  </p>
                                   <p className="font-medium text-foreground">
                                     ${position.costUsd.toFixed(2)}
                                   </p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">当前价值</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    当前价值
+                                  </p>
                                   <p className="font-medium text-foreground">
                                     ${position.currentValueUsd.toFixed(2)}
                                   </p>
                                 </div>
                                 <div>
-                                  <p className="text-xs text-muted-foreground">浮盈亏</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    浮盈亏
+                                  </p>
                                   <p
                                     className={`font-medium ${
-                                      unrealized >= 0 ? "text-profit" : "text-loss"
+                                      unrealized >= 0
+                                        ? "text-profit"
+                                        : "text-loss"
                                     }`}
                                   >
                                     {formatUsd(unrealized)}
@@ -1341,20 +1872,177 @@ export default function CopyTradingPage() {
                       )}
                     </div>
                   </GlassCard>
+
+                  <GlassCard className="p-5">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-neon-blue">
+                          On-chain
+                        </p>
+                        <h2 className="text-lg font-semibold text-foreground">
+                          链上执行摘要
+                        </h2>
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        这里汇总真实点击“真实执行”后提交到链上的结果
+                      </span>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-xl border border-glass-border bg-secondary/20 p-3">
+                        <p className="text-sm font-medium text-foreground">
+                          链上执行笔数
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {realExecutionSummary.count} 笔
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-glass-border bg-secondary/20 p-3">
+                        <p className="text-sm font-medium text-foreground">
+                          链上执行金额
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {formatSolAmount(realExecutionSummary.totalSolAmount)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-glass-border bg-secondary/20 p-3">
+                        <p className="text-sm font-medium text-foreground">
+                          钱包待回签名
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {realExecutionSummary.pendingWithoutSignature} 笔
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-xl border border-glass-border bg-secondary/20 p-3">
+                        <p className="text-sm font-medium text-foreground">
+                          真实执行持仓
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {realExecutionProfitSummary.positions} 个 Token
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-glass-border bg-secondary/20 p-3">
+                        <p className="text-sm font-medium text-foreground">
+                          真实执行当前价值
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          ${realExecutionProfitSummary.totalCurrentUsd.toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-glass-border bg-secondary/20 p-3">
+                        <p className="text-sm font-medium text-foreground">
+                          真实执行预估收益
+                        </p>
+                        <p
+                          className={`mt-1 text-xs ${
+                            realExecutionProfitSummary.totalPnlUsd >= 0
+                              ? "text-profit"
+                              : "text-loss"
+                          }`}
+                        >
+                          {formatUsd(realExecutionProfitSummary.totalPnlUsd)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      {realExecutionPositions.length > 0 ? (
+                        realExecutionPositions.map((position) => (
+                          <div
+                            key={position.key}
+                            className="flex items-center justify-between rounded-xl border border-glass-border bg-secondary/20 p-4"
+                          >
+                            <div className="flex items-center gap-3">
+                              <TokenIcon
+                                token={getDisplayTokenName(
+                                  position.token,
+                                  position.tokenDetail,
+                                )}
+                                color="#22c55e"
+                              />
+                              <div>
+                                <p className="font-medium text-foreground">
+                                  {getDisplayTokenName(
+                                    position.token,
+                                    position.tokenDetail,
+                                  )}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  来源 {position.sourceLabel || "钱包执行"} · 已执行{" "}
+                                  {position.executions} 笔
+                                </p>
+                                {getSecondaryTokenLabel(
+                                  position.token,
+                                  position.tokenDetail,
+                                ) ? (
+                                  <p className="text-xs text-muted-foreground">
+                                    {getSecondaryTokenLabel(
+                                      position.token,
+                                      position.tokenDetail,
+                                    )}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-4 text-right text-sm">
+                              <div>
+                                <p className="text-xs text-muted-foreground">
+                                  成本
+                                </p>
+                                <p className="font-medium text-foreground">
+                                  ${position.costUsd.toFixed(2)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">
+                                  当前价值
+                                </p>
+                                <p className="font-medium text-foreground">
+                                  ${position.currentValueUsd.toFixed(2)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">
+                                  预估收益
+                                </p>
+                                <p
+                                  className={`font-medium ${
+                                    position.pnlUsd >= 0
+                                      ? "text-profit"
+                                      : "text-loss"
+                                  }`}
+                                >
+                                  {formatUsd(position.pnlUsd)}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {position.pnlPct >= 0 ? "+" : ""}
+                                  {position.pnlPct.toFixed(2)}%
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-xl border border-dashed border-glass-border bg-secondary/20 p-6 text-center text-sm text-muted-foreground">
+                          还没有链上真实执行持仓。点一次“真实执行”后，这里会显示独立于模拟仓位的真实执行摘要。
+                        </div>
+                      )}
+                    </div>
+                  </GlassCard>
                 </>
               ) : null}
 
               {/* Transaction History */}
               <GlassCard className="p-5">
                 <div className="mb-4 flex items-center justify-between">
-                    <div>
-                      <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-profit">
-                        Execution
-                      </p>
-                      <h2 className="text-lg font-semibold text-foreground">
-                        {mode === "live" ? "执行记录" : "交易历史"}
-                      </h2>
-                    </div>
+                  <div>
+                    <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-profit">
+                      Execution
+                    </p>
+                    <h2 className="text-lg font-semibold text-foreground">
+                      {mode === "live" ? "执行记录" : "交易历史"}
+                    </h2>
+                  </div>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1365,10 +2053,12 @@ export default function CopyTradingPage() {
                   </Button>
                 </div>
                 {mode === "live" ? (
-                  <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                  <div className="mb-4 grid gap-3 sm:grid-cols-3">
                     <select
                       value={selectedSourceFilter}
-                      onChange={(event) => setSelectedSourceFilter(event.target.value)}
+                      onChange={(event) =>
+                        setSelectedSourceFilter(event.target.value)
+                      }
                       className="rounded-xl border border-glass-border bg-secondary/30 px-3 py-2 text-sm text-foreground outline-none focus:border-neon-purple/50"
                     >
                       <option value="all">全部来源地址</option>
@@ -1380,7 +2070,9 @@ export default function CopyTradingPage() {
                     </select>
                     <select
                       value={selectedTokenFilter}
-                      onChange={(event) => setSelectedTokenFilter(event.target.value)}
+                      onChange={(event) =>
+                        setSelectedTokenFilter(event.target.value)
+                      }
                       className="rounded-xl border border-glass-border bg-secondary/30 px-3 py-2 text-sm text-foreground outline-none focus:border-neon-purple/50"
                     >
                       <option value="all">全部 Token</option>
@@ -1390,82 +2082,215 @@ export default function CopyTradingPage() {
                         </option>
                       ))}
                     </select>
+                    <select
+                      value={selectedActionFilter}
+                      onChange={(event) =>
+                        setSelectedActionFilter(
+                          event.target.value as "all" | "buy" | "sell",
+                        )
+                      }
+                      className="rounded-xl border border-glass-border bg-secondary/30 px-3 py-2 text-sm text-foreground outline-none focus:border-neon-purple/50"
+                    >
+                      <option value="all">全部方向</option>
+                      <option value="buy">只看买入</option>
+                      <option value="sell">只看卖出</option>
+                    </select>
                   </div>
                 ) : null}
                 <div className="space-y-3">
-                  {filteredTradeHistory.map((trade, index) => (
-                    <div
-                      key={mode === "live" ? trade.id : trade.id ?? index}
-                      className="group flex items-center justify-between rounded-xl border border-transparent bg-secondary/30 p-3 transition-all duration-200 hover:border-glass-border hover:bg-secondary/50"
-                    >
-                      <div className="flex items-center gap-3">
-                        <TokenIcon token={trade.token} color={trade.color} />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-foreground">
-                              {trade.token}
-                            </span>
-                            <span
-                              className={`flex items-center gap-0.5 text-xs font-medium ${
-                                trade.action === "buy"
-                                  ? "text-profit"
-                                  : "text-loss"
-                              }`}
-                            >
-                              {trade.action === "buy" ? (
-                                <ArrowDownRight className="h-3 w-3" />
-                              ) : (
-                                <ArrowUpRight className="h-3 w-3" />
+                  {filteredTradeHistory.map((trade, index) =>
+                    (() => {
+                      const liveTrade =
+                        mode === "live"
+                          ? (trade as SimulatedTradeRecord)
+                          : null;
+
+                      return (
+                        <div
+                          key={mode === "live" ? trade.id : (trade.id ?? index)}
+                          className="group flex items-center justify-between rounded-xl border border-transparent bg-secondary/30 p-3 transition-all duration-200 hover:border-glass-border hover:bg-secondary/50"
+                        >
+                          <div className="flex items-center gap-3">
+                            <TokenIcon
+                              token={getDisplayTokenName(
+                                trade.token,
+                                liveTrade?.tokenDetail,
                               )}
-                              {trade.action === "buy" ? "买入" : "卖出"}
-                            </span>
+                              color={trade.color}
+                            />
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-foreground">
+                                  {getDisplayTokenName(
+                                    trade.token,
+                                    liveTrade?.tokenDetail,
+                                  )}
+                                </span>
+                                <span
+                                  className={`flex items-center gap-0.5 text-xs font-medium ${
+                                    trade.action === "buy"
+                                      ? "text-profit"
+                                      : "text-loss"
+                                  }`}
+                                >
+                                  {trade.action === "buy" ? (
+                                    <ArrowDownRight className="h-3 w-3" />
+                                  ) : (
+                                    <ArrowUpRight className="h-3 w-3" />
+                                  )}
+                                  {trade.action === "buy" ? "买入" : "卖出"}
+                                </span>
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                {mode === "live"
+                                  ? `${trade.amount} · 跟单 $${trade.copiedUsd.toFixed(2)} · 测试单 ${formatSolAmount(
+                                      Math.min(
+                                        REAL_EXECUTION_TEST_SOL,
+                                        Math.max(
+                                          trade.copiedUsd / SOL_USD_REFERENCE,
+                                          0.0001,
+                                        ),
+                                      ),
+                                    )}`
+                                  : trade.amount}
+                              </p>
+                              {getSecondaryTokenLabel(
+                                trade.token,
+                                liveTrade?.tokenDetail,
+                              ) ? (
+                                <p className="text-xs text-muted-foreground">
+                                  {getSecondaryTokenLabel(
+                                    trade.token,
+                                    liveTrade?.tokenDetail,
+                                  )}
+                                </p>
+                              ) : null}
+                            </div>
                           </div>
-                          <p className="text-sm text-muted-foreground">
-                            {mode === "live"
-                              ? `${trade.amount} · 跟单 $${trade.copiedUsd.toFixed(2)}`
-                              : trade.amount}
-                          </p>
+                          <div className="text-right">
+                            {mode === "live" ? (
+                              liveTrade?.status === "skipped" &&
+                              liveTrade.skipReason ? (
+                                <div className="flex justify-end">
+                                  <UITooltip>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1 text-xs font-medium text-loss hover:text-foreground"
+                                      >
+                                        <Info className="h-3.5 w-3.5" />
+                                        skipped
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="left"
+                                      className="max-w-[260px] border border-glass-border bg-[#0c1020] text-foreground"
+                                    >
+                                      {liveTrade.skipReason}
+                                    </TooltipContent>
+                                  </UITooltip>
+                                </div>
+                              ) : (
+                                <p
+                                  className={`text-xs font-medium ${
+                                    trade.status === "executed"
+                                      ? "text-profit"
+                                      : "text-neon-blue"
+                                  }`}
+                                >
+                                  {trade.status === "executed"
+                                    ? "executed"
+                                    : "open"}
+                                </p>
+                              )
+                            ) : null}
+                            {trade.profit !== null ? (
+                              <p
+                                className={`font-medium ${
+                                  trade.profit >= 0
+                                    ? "text-profit"
+                                    : "text-loss"
+                                }`}
+                              >
+                                {trade.profit >= 0 ? "+" : ""}${trade.profit}
+                              </p>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">
+                                {getExecutionStatusLabel(
+                                  trade as SimulatedTradeRecord,
+                                  mode,
+                                )}
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground">
+                              {mode === "live"
+                                ? `${trade.sourceLabel} · ${trade.timestamp}`
+                                : trade.timestamp}
+                            </p>
+                            {mode === "live" && liveTrade ? (
+                              <div className="mt-2 flex items-center justify-end gap-2">
+                                {realExecutionStates[liveTrade.id]
+                                  ?.signature ? (
+                                  <a
+                                    href={`https://solscan.io/tx/${realExecutionStates[liveTrade.id]?.signature}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs font-medium text-neon-blue hover:text-foreground"
+                                  >
+                                    查看链上交易
+                                  </a>
+                                ) : null}
+                                {liveTrade.action === "buy" ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={() =>
+                                      handleExecuteRealTrade(liveTrade)
+                                    }
+                                    disabled={
+                                      !liveTrade.tokenMint ||
+                                      realExecutionStates[liveTrade.id]
+                                        ?.status === "preparing" ||
+                                      realExecutionStates[liveTrade.id]
+                                        ?.status === "awaiting_wallet"
+                                    }
+                                    className="h-8 rounded-full px-3 text-xs"
+                                  >
+                                    {realExecutionStates[liveTrade.id]
+                                      ?.status === "preparing"
+                                      ? "准备中"
+                                      : realExecutionStates[liveTrade.id]
+                                            ?.status === "awaiting_wallet"
+                                        ? "钱包确认中"
+                                        : realExecutionStates[liveTrade.id]
+                                              ?.status === "submitted"
+                                          ? "已提交真实交易"
+                                          : "真实执行"}
+                                  </Button>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            {mode === "live" &&
+                            liveTrade &&
+                            realExecutionStates[liveTrade.id]?.error ? (
+                              <p className="mt-2 max-w-[220px] text-right text-[11px] text-loss">
+                                {realExecutionStates[liveTrade.id]?.error}
+                              </p>
+                            ) : null}
+                            {mode === "live" &&
+                            liveTrade &&
+                            realExecutionStates[liveTrade.id]?.note ? (
+                              <p className="mt-2 max-w-[240px] text-right text-[11px] text-neon-blue">
+                                {realExecutionStates[liveTrade.id]?.note}
+                                <br />
+                                请在钱包交易历史中查看。
+                              </p>
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        {mode === "live" ? (
-                          <p
-                            className={`text-xs font-medium ${
-                              trade.status === "executed"
-                                ? "text-profit"
-                                : trade.status === "skipped"
-                                  ? "text-loss"
-                                  : "text-neon-blue"
-                            }`}
-                          >
-                            {trade.status === "executed"
-                              ? "executed"
-                              : trade.status === "skipped"
-                                ? "skipped"
-                                : "open"}
-                          </p>
-                        ) : null}
-                        {trade.profit !== null ? (
-                          <p
-                            className={`font-medium ${
-                              trade.profit >= 0 ? "text-profit" : "text-loss"
-                            }`}
-                          >
-                            {trade.profit >= 0 ? "+" : ""}${trade.profit}
-                          </p>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">
-                            {mode === "live" ? "待平仓" : "持仓中"}
-                          </p>
-                        )}
-                        <p className="text-xs text-muted-foreground">
-                          {mode === "live"
-                            ? `${trade.sourceLabel} · ${trade.timestamp}`
-                            : trade.timestamp}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    })(),
+                  )}
                   {filteredTradeHistory.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-glass-border bg-secondary/20 p-6 text-center text-sm text-muted-foreground">
                       当前筛选条件下没有执行记录。
@@ -1477,18 +2302,18 @@ export default function CopyTradingPage() {
 
             {/* Right Column: Activity Log */}
             <GlassCard className="h-fit p-5 lg:sticky lg:top-6">
-                <div className="mb-4 flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-neon-purple/20 to-neon-blue/20">
-                    <Activity className="h-4 w-4 text-neon-purple" />
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-neon-purple">
-                      Agent
-                    </p>
-                    <h2 className="text-lg font-semibold text-foreground">
-                      活动日志
-                    </h2>
-                  </div>
+              <div className="mb-4 flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-neon-purple/20 to-neon-blue/20">
+                  <Activity className="h-4 w-4 text-neon-purple" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-neon-purple">
+                    Agent
+                  </p>
+                  <h2 className="text-lg font-semibold text-foreground">
+                    活动日志
+                  </h2>
+                </div>
               </div>
 
               <div className="space-y-3">
