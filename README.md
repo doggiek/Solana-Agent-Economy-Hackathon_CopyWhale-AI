@@ -10,7 +10,9 @@ It helps users:
 - simulate copy-trading strategies,
 - and trigger real trade execution through Bitget Wallet.
 
-Live demo: [https://copywhale-ai.vercel.app/](https://copywhale-ai.vercel.app/)
+<video src="https://youtu.be/4kDXC3ayyi8" controls width="100%" max-width="800px">
+  Your browser does not support the video tag.
+</video>
 
 ### [🔗](https://www.attentionvc.ai/hackathon) Solana Agent Economy Hackathon: Agent Talent Show
 
@@ -47,6 +49,8 @@ Instead of stopping at wallet analytics, it connects:
 
 For a live Solana wallet, the app shows:
 
+![Wallet Analysis](./public/image-4.png)
+
 - recent trades,
 - meme trade count,
 - buy / sell ratio,
@@ -64,6 +68,8 @@ The app includes an address radar page for screening candidate wallets in batche
 
 The trading console supports:
 
+![Copy Trading Console](./public/image-2.png)
+
 - follow tasks,
 - simulated positions,
 - on-chain execution summary,
@@ -72,6 +78,8 @@ The trading console supports:
   ![alt text](image-3.png)
 
 ### 4. Real execution
+
+![Real Execution](./public/image-5.png)
 
 Users can trigger a real test trade from eligible buy signals through Bitget Wallet.
 
@@ -183,7 +191,7 @@ Open:
 
 - Home: [http://localhost:3000](http://localhost:3000)
 - Example premium demo:
-  [http://localhost:3000/api/premium/copy-plan?wallet=2zWkRKi5Rw15Kjx9SxhMjPY7LQTfQyr9hQKuTCGSy2FE&demo_paid=1](http://localhost:3000/api/premium/copy-plan?wallet=2zWkRKi5Rw15Kjx9SxhMjPY7LQTfQyr9hQKuTCGSy2FE&demo_paid=1)
+  [http://localhost:3000/api/premium/copy-plan?wallet=&demo_paid=1](http://localhost:3000/api/premium/copy-plan?wallet=2zWkRKi5Rw15Kjx9SxhMjPY7LQTfQyr9hQKuTCGSy2FE&demo_paid=1)
 
 ## Deployment
 
@@ -195,12 +203,6 @@ Recommended environment variables for Vercel:
 - `HELIUS_API_KEY`
 - `SOLANA_RPC_URL`
 - `SOLANA_RPC_API_KEY` (only if your RPC provider needs it)
-
-## 🎬 Demo
-
-<video src="./public/copy_35A5099F-793F-4DD7-B54D-31D90503C9A6.MOV" controls width="100%" max-width="800px">
-  Your browser does not support the video tag.
-</video>
 
 ## Links
 
