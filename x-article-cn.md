@@ -1,242 +1,132 @@
 # CopyWhale AI
 
-一个面向 Solana meme 交易场景的聪明钱跟单代理。
+Turn Smart Money into Action on Solana
 
-这次黑客松里，我想解决的问题其实很直接：
-
-**链上“聪明钱”数据已经很多了，但普通用户依然很难真正用起来。**
-
-大家常见的痛点不是“看不到数据”，而是：
-
-- 不知道哪个地址值得跟
-- 看不懂一个地址最近到底在做什么
-- 不知道该不该跟、怎么跟、跟多少
-- 钱包连接以后，也没有真正进入执行链路
-
-所以我做了 **CopyWhale AI**。
-
-它不是一个单纯的数据面板，而是一个面向 Solana meme 交易的 AI 跟单代理：
-
-**聪明地址分析 -> AI 跟单判断 -> 跟单任务池 -> 模拟执行 -> 真实执行**
+CopyWhale AI 是一个面向 **Solana meme 交易** 的 AI 跟单代理，将聪明钱分析转化为可执行策略。
 
 ---
 
-## 我做了什么
+## 🚀 赛道
 
-### 1. Smart Money 钱包分析
-
-输入一个 Solana 地址后，系统会分析：
-
-- 最近交易
-- Meme 交易数
-- 买卖比
-- Most Traded Tokens
-- AI 洞察
-- 是否适合继续观察 / 跟单
-
-重点不是只做“钱包画像”，而是尽量还原一个地址最近到底在做什么。
-
-【插图 1：钱包分析页全图】
+- 💼 [Bitget Wallet](https://www.bitget.com/)：基于 Bitget 钱包技能开发 Solana 模因币 AI 交易代理
+- 🏆 [Covalent GoldRush](https://www.covalenthq.com/)：数据驱动的淘金热特工代理
 
 ---
 
-### 2. 跟单判断
+## 🧠 问题
 
-在钱包分析页里，我直接把“是否跟单”的判断前置了。
+链上数据丰富，但用户面临：
 
-用户可以看到：
+- 看得到“聪明钱”，却不知道是否跟单
+- 看得懂交易，却看不懂行为
+- 有钱包，却缺乏执行路径
 
-- AI 跟单判断
-- 风险等级建议
-- 跟单比例
-- 单币仓位上限
-- 模拟止损 / 模拟止盈
-
-也就是说，用户不是进入交易面板之后才开始想“怎么跟”，而是在分析页就完成了决策。
-
-【插图 2：跟单判断模块特写】
+**本质问题**：数据很多，但无法转化为行动
 
 ---
 
-### 3. 跟单控制台
+## 💡 解决方案
 
-当用户点击“加入自动跟单池”后，会进入跟单控制台。
+CopyWhale AI 将 **聪明钱分析** 变为 **可执行策略**：
 
-这里可以看到：
+**完整链路**：
+Smart Wallet → AI Decision → Copy Plan → Execution
 
-- 控制台概览
-- 跟单任务
-- 当前模拟持仓
-- 链上执行摘要
-- 执行记录
-- 活动日志
+流程：
 
-这部分更像一个 agent runtime console，而不只是展示页面。
-
-【插图 3：交易面板 / 控制台截图】
-
----
-
-### 4. 真实执行
-
-我没有让钱包只是停留在“连接成功”的层面。
-
-在交易面板里，用户可以直接点：
-
-**真实执行**
-
-然后通过 Bitget Wallet 发起真实交易。
-
-这对我来说很关键，因为：
-
-- 钱包不是摆设
-- agent 不是纯模拟器
-- 产品具备真实执行入口
-
-【插图 4：真实执行按钮 + 钱包交易成功截图】
+1. 识别聪明地址
+2. 解析最近交易
+3. AI 给出跟单判断
+4. 加入跟单任务池
+5. 模拟执行
+6. 真实执行
 
 ---
 
-### 5. Premium / x402 风格的高级情报接口
+## ⚡ 功能亮点
 
-除了分析和执行，我还做了一个轻量级 premium endpoint：
+### 1️⃣ Smart Money Analysis
 
-`/api/premium/copy-plan?wallet=...`
+- 输入钱包地址即可查看行为洞察：
+  - 最近交易 + Meme 活跃度
+  - 买卖节奏
+  - Most traded tokens
+  - AI 行为洞察
 
-它的行为是：
+### 2️⃣ AI Copy Decision（核心）
 
-- 未支付时返回 `402 Payment Required`
-- 已支付 demo 时返回 premium copy plan
+- 自动给出跟单建议：
+  - 是否值得跟单
+  - 风险等级
+  - 跟单比例
+  - 单币仓位
+  - 止盈 / 止损
 
-返回内容包括：
+### 3️⃣ Copy Trading Console
 
-- 是否建议跟单
-- 推荐风险等级
-- 推荐跟单比例
-- 止盈止损
-- 最近信号摘要
+- Agent 控制台而非普通交易页面
+- 可查看：
+  - 跟单任务
+  - 模拟持仓
+  - 执行记录
+  - 链上行为摘要
 
-这部分不是完整支付系统，而是一个 **x402-compatible demo flow**。  
-我想表达的是：
+### 4️⃣ Real Execution
 
-> CopyWhale AI 不只是一个前端页面，它还可以把高级跟单情报作为 agent API 对外开放。
+- 直接执行交易，通过 BitgetWallet 发起：
+  - 一键执行
+  - On-chain confirmation
+  - 完整闭环
 
-【插图 5：402 响应截图】
-【插图 6：已支付 premium copy plan 响应截图】
+### 5️⃣ Premium Intelligence (x402-style)
 
----
-
-## 技术栈
-
-### 钱包层
-
-- Bitget Wallet
-- Phantom
-
-### 链上 intelligence 层
-
-- Covalent GoldRush
-  - 钱包画像
-  - 持仓估值
-  - 基础链上情报
-
-- Helius Enhanced Transactions
-  - recent trades
-  - 高频交易识别
-  - 交易行为恢复
-
-- Solana RPC fallback
-  - 在增强交易数据不可用时做基础兜底
-
-### 产品层
-
-- 首页
-- 钱包分析页
-- 地址雷达
-- 跟单控制台
-- Premium intelligence endpoint
+- `/api/premium/copy-plan` 提供可货币化的 AI 输出：
+  - 跟单建议
+  - 风险等级
+  - 仓位控制
+  - 信号摘要
 
 ---
 
-## 为什么这个项目有意思
+## 🧱 技术栈
 
-我觉得很多链上产品的问题是：
-
-- 要么停留在“看数据”
-- 要么停留在“讲策略”
-- 要么只是一个连接钱包按钮
-
-而我更想做的是一条完整链路：
-
-**链上行为 -> AI 判断 -> 跟单建议 -> 执行控制台 -> 钱包真实执行**
-
-也就是把“看懂聪明钱”真正变成“可以跟单的动作”。
+- **Wallet**: BitgetWallet, Phantom
+- **On-chain Intelligence**: Covalent GoldRush, Helius Enhanced Transactions, Solana RPC fallback
+- **Product**: Wallet Analysis, Copy Decision Engine, Trading Console, Premium API
 
 ---
 
-## 适配赛道
+## 🔥 为什么重要
 
-### @BitgetWallet
+大多数产品只停留在：
 
-这个项目里，Bitget Wallet 不是一个摆设入口，而是真正承担了：
+- 数据工具
+- 策略讨论
+- 钱包入口
 
-- 钱包连接
-- 交易确认
-- 真实执行
-
-这更接近一个真正的 Solana meme trading agent。
-
-### Premium / x402 方向
-
-我额外做了一个 premium copy plan endpoint，用来展示 agent intelligence 的收费能力：
-
-- 未支付：返回 402
-- 已支付 demo：解锁高级 copy plan
-
-这让项目不只是“一个分析工具”，而更像一个可以对外输出 premium intelligence 的 agent。
+CopyWhale AI 提供完整链路：
+Data → Insight → Decision → Execution
 
 ---
 
-## 当前完成了什么
+## ✅ 已完成
 
-目前已经完成：
-
-- Bitget / Phantom 钱包连接
-- Live 钱包分析
-- Smart money 行为识别
-- Meme 交易解析
-- AI 洞察
-- 跟单判断
-- 地址筛选
-- 跟单任务池
-- 模拟执行控制台
-- 真实执行按钮
-- Premium / x402 demo endpoint
+- Wallet analysis（实时）
+- Smart money detection
+- Meme trading parsing
+- AI insights
+- Copy decision engine
+- Copy task pool
+- Simulation engine
+- Real execution
+- Premium endpoint
 
 ---
 
-## Demo 路线
+## 🎬 Demo 流程
 
-我会这样给评委演示：
+- [Demo 网站](https://copywhale-ai.vercel.app/)
+- [GitHub 仓库](https://github.com/doggiek/Solana-Agent-Economy-Hackathon_CopyWhale-AI)
+- Premium API: `https://copywhale-ai.vercel.app/api/premium/copy-plan?wallet=xxx`
 
-1. 首页输入一个 live 地址
-2. 查看钱包分析页
-3. 展示 AI 洞察和跟单判断
-4. 把地址加入自动跟单池
-5. 打开交易面板
-6. 展示模拟执行和真实执行
-7. 最后点开 premium / x402 入口，展示 402 和 premium 返回
-
----
-
-## Links
-
-- GitHub: [替换]
-- Demo: [替换]
-- Premium endpoint demo: [替换]
-- X Article: [本篇]
-
-@trendsdotfun  
-@solana_devs  
-@BitgetWallet  
-#AgentTalentShow
+> 作者: DoggieK (@DoggieKKKKKK)

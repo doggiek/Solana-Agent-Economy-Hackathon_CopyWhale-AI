@@ -253,3 +253,11 @@ to turn on-chain whale behavior into actionable copy-trading decisions.
 - 增加胜率 / realized PnL / hold duration 指标
 - 把跟单建议从“行为判断”升级为“收益 + 行为”的综合判断
 - 进一步贴近 GMGN/Nansen 的交易视图体验
+
+---
+
+## 项目链接
+
+- GitHub: https://github.com/doggiek/Solana-Agent-Economy-Hackathon_CopyWhale-AI
+- Demo: https://copywhale-ai.vercel.app/
+- Premium API demo: https://copywhale-ai.vercel.app/api/premium/copy-plan?wallet=2zWkRKi5Rw15Kjx9SxhMjPY7LQTfQyr9hQKuTCGSy2FE&demo_paid=1
