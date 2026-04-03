@@ -207,5 +207,7 @@ Recommended environment variables for Vercel:
 ## Links
 
 - GitHub: [https://github.com/doggiek/Solana-Agent-Economy-Hackathon_CopyWhale-AI](https://github.com/doggiek/Solana-Agent-Economy-Hackathon_CopyWhale-AI)
-- Demo Playground: [https://copywhale-ai.vercel.app/](https://copywhale-ai.vercel.app/)
+- Live Demo: [https://copywhale-ai.vercel.app/](https://copywhale-ai.vercel.app/)
 - Premium API: `https://copywhale-ai.vercel.app/api/premium/copy-plan?wallet=xxx`
+- X Article: [https://x.com/DoggieKKKKKK/status/2039987901984088076?s=20](https://x.com/DoggieKKKKKK/status/2039987901984088076?s=20)
+- YouTube Demo: [https://youtu.be/4kDXC3ayyi8](https://youtu.be/4kDXC3ayyi8)
