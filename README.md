@@ -10,15 +10,13 @@ It helps users:
 - simulate copy-trading strategies,
 - and trigger real trade execution through Bitget Wallet.
 
-<video src="https://youtu.be/4kDXC3ayyi8" controls width="100%" max-width="800px">
-  Your browser does not support the video tag.
-</video>
+[![CopyWhale AI Demo](https://img.youtube.com/vi/4kDXC3ayyi8/0.jpg)](https://www.youtube.com/watch?v=4kDXC3ayyi8)
 
 ### [🔗](https://www.attentionvc.ai/hackathon) Solana Agent Economy Hackathon: Agent Talent Show
 
-X: [Agent Talent Show](https://x.com/trendsdotfun/status/2037545575613428029?s=20)
-Submit: [AttentionVC](https://www.attentionvc.ai/hackathon)
-My X Article: [CopyWhale AI](https://x.com/DoggieKKKKKK/status/2039987901984088076?s=20)
+- X: [Agent Talent Show](https://x.com/trendsdotfun/status/2037545575613428029?s=20)
+- Submit: [AttentionVC](https://www.attentionvc.ai/hackathon)
+- My X Article: [CopyWhale AI](https://x.com/DoggieKKKKKK/status/2039987901984088076?s=20)
 
 #### Track 1: Bitget Wallet
 
@@ -49,8 +47,6 @@ Instead of stopping at wallet analytics, it connects:
 
 For a live Solana wallet, the app shows:
 
-![Wallet Analysis](./public/image-4.png)
-
 - recent trades,
 - meme trade count,
 - buy / sell ratio,
@@ -58,32 +54,30 @@ For a live Solana wallet, the app shows:
 - AI insight,
 - copy-trading verdict,
 - and risk-oriented follow settings.
-  ![alt text](image-4.png)
+  ![Wallet Analysis](./public/image-wallet-all.png)
 
 ### 2. Smart wallet finder
 
 The app includes an address radar page for screening candidate wallets in batches instead of checking them one by one manually.
 
+![smark wallets](./public/image-smart-wallets.png)
+
 ### 3. Copy-trading console
 
 The trading console supports:
-
-![Copy Trading Console](./public/image-2.png)
 
 - follow tasks,
 - simulated positions,
 - on-chain execution summary,
 - execution feed,
 - and agent activity logs.
-  ![alt text](image-3.png)
+  ![alt text](./public/iimage-copy-trading-overview.png)
 
 ### 4. Real execution
 
-![Real Execution](./public/image-5.png)
-
 Users can trigger a real test trade from eligible buy signals through Bitget Wallet.
 
-![alt text](image-2.png)
+![Copy Trading Console](./public/image-excution.png)
 
 ### 5. Premium copy-plan API
 
@@ -94,8 +88,8 @@ The premium endpoint returns:
 - recommended copy ratio,
 - stop loss / take profit suggestions,
 - and a signal snapshot.
-  ![alt text](image-5.png)
-  ![alt text](image-6.png)
+  ![alt text](./public/image-wallet-AI.png)
+  ![alt text](./public/image-api.png)
 
 ## Tech Stack
 
