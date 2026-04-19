@@ -10,8 +10,6 @@ It helps users:
 - simulate copy-trading strategies,
 - and trigger real trade execution through Bitget Wallet.
 
-[![CopyWhale AI Demo](https://img.youtube.com/vi/4kDXC3ayyi8/0.jpg)](https://www.youtube.com/watch?v=4kDXC3ayyi8)
-
 ### [🔗](https://www.attentionvc.ai/hackathon) Solana Agent Economy Hackathon: Agent Talent Show
 
 - X: [Agent Talent Show](https://x.com/trendsdotfun/status/2037545575613428029?s=20)
@@ -71,7 +69,7 @@ The trading console supports:
 - on-chain execution summary,
 - execution feed,
 - and agent activity logs.
-  ![alt text](./public/iimage-copy-trading-overview.png)
+  ![alt text](./public/image-copy-trading-overview.png)
 
 ### 4. Real execution
 
