@@ -1,5 +1,7 @@
 # CopyWhale AI
 
+🏆 **1st Place - GoldRush Agentic Track Hackathon**
+
 CopyWhale AI is a Solana meme smart-money trading agent.
 
 It helps users:
@@ -18,11 +20,13 @@ It helps users:
 
 #### Track 1: Bitget Wallet
 
-- 💼 [Bitget Wallet](https://www.bitget.com/)：基于 Bitget 钱包技能开发 Solana 模因币 AI 交易代理
+- [Bitget Wallet](https://www.bitget.com/)：基于 Bitget 钱包技能开发 Solana 模因币 AI 交易代理
 
 #### Track 2: Covalent GoldRush
 
-- 🏆 [Covalent GoldRush](https://www.covalenthq.com/)：数据驱动的淘金热特工代理
+- [Covalent GoldRush](https://www.covalenthq.com/)：数据驱动的淘金热特工代理
+
+- 🏆 **Winner: 1st Place - GoldRush Agentic Track**
 
 ## Background
 
